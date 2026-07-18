@@ -96,8 +96,10 @@ class _DreamEditorPageState extends ConsumerState<DreamEditorPage> {
         ),
       );
     }
-    if (mounted && context.canPop()) {
-      context.pop();
+    if (!mounted) return;
+    final router = GoRouter.maybeOf(context);
+    if (router != null && router.canPop()) {
+      router.pop();
     }
   }
 
