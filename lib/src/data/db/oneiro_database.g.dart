@@ -916,6 +916,234 @@ class DismissedThemeWordsCompanion extends UpdateCompanion<DismissedThemeWord> {
   }
 }
 
+class $SyncStatesTable extends SyncStates
+    with TableInfo<$SyncStatesTable, SyncState> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SyncStatesTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _entryIdMeta = const VerificationMeta(
+    'entryId',
+  );
+  @override
+  late final GeneratedColumn<String> entryId = GeneratedColumn<String>(
+    'entry_id',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _lastSyncedUpdatedAtMeta =
+      const VerificationMeta('lastSyncedUpdatedAt');
+  @override
+  late final GeneratedColumn<int> lastSyncedUpdatedAt = GeneratedColumn<int>(
+    'last_synced_updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [entryId, lastSyncedUpdatedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'sync_states';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SyncState> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('entry_id')) {
+      context.handle(
+        _entryIdMeta,
+        entryId.isAcceptableOrUnknown(data['entry_id']!, _entryIdMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_entryIdMeta);
+    }
+    if (data.containsKey('last_synced_updated_at')) {
+      context.handle(
+        _lastSyncedUpdatedAtMeta,
+        lastSyncedUpdatedAt.isAcceptableOrUnknown(
+          data['last_synced_updated_at']!,
+          _lastSyncedUpdatedAtMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_lastSyncedUpdatedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {entryId};
+  @override
+  SyncState map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SyncState(
+      entryId: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}entry_id'],
+      )!,
+      lastSyncedUpdatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}last_synced_updated_at'],
+      )!,
+    );
+  }
+
+  @override
+  $SyncStatesTable createAlias(String alias) {
+    return $SyncStatesTable(attachedDatabase, alias);
+  }
+}
+
+class SyncState extends DataClass implements Insertable<SyncState> {
+  /// The dream entry this row tracks.
+  final String entryId;
+
+  /// The entry `updatedAt` (millis since epoch) as of the last successful
+  /// push or pull.
+  final int lastSyncedUpdatedAt;
+  const SyncState({required this.entryId, required this.lastSyncedUpdatedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['entry_id'] = Variable<String>(entryId);
+    map['last_synced_updated_at'] = Variable<int>(lastSyncedUpdatedAt);
+    return map;
+  }
+
+  SyncStatesCompanion toCompanion(bool nullToAbsent) {
+    return SyncStatesCompanion(
+      entryId: Value(entryId),
+      lastSyncedUpdatedAt: Value(lastSyncedUpdatedAt),
+    );
+  }
+
+  factory SyncState.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SyncState(
+      entryId: serializer.fromJson<String>(json['entryId']),
+      lastSyncedUpdatedAt: serializer.fromJson<int>(
+        json['lastSyncedUpdatedAt'],
+      ),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'entryId': serializer.toJson<String>(entryId),
+      'lastSyncedUpdatedAt': serializer.toJson<int>(lastSyncedUpdatedAt),
+    };
+  }
+
+  SyncState copyWith({String? entryId, int? lastSyncedUpdatedAt}) => SyncState(
+    entryId: entryId ?? this.entryId,
+    lastSyncedUpdatedAt: lastSyncedUpdatedAt ?? this.lastSyncedUpdatedAt,
+  );
+  SyncState copyWithCompanion(SyncStatesCompanion data) {
+    return SyncState(
+      entryId: data.entryId.present ? data.entryId.value : this.entryId,
+      lastSyncedUpdatedAt: data.lastSyncedUpdatedAt.present
+          ? data.lastSyncedUpdatedAt.value
+          : this.lastSyncedUpdatedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyncState(')
+          ..write('entryId: $entryId, ')
+          ..write('lastSyncedUpdatedAt: $lastSyncedUpdatedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(entryId, lastSyncedUpdatedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SyncState &&
+          other.entryId == this.entryId &&
+          other.lastSyncedUpdatedAt == this.lastSyncedUpdatedAt);
+}
+
+class SyncStatesCompanion extends UpdateCompanion<SyncState> {
+  final Value<String> entryId;
+  final Value<int> lastSyncedUpdatedAt;
+  final Value<int> rowid;
+  const SyncStatesCompanion({
+    this.entryId = const Value.absent(),
+    this.lastSyncedUpdatedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  SyncStatesCompanion.insert({
+    required String entryId,
+    required int lastSyncedUpdatedAt,
+    this.rowid = const Value.absent(),
+  }) : entryId = Value(entryId),
+       lastSyncedUpdatedAt = Value(lastSyncedUpdatedAt);
+  static Insertable<SyncState> custom({
+    Expression<String>? entryId,
+    Expression<int>? lastSyncedUpdatedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (entryId != null) 'entry_id': entryId,
+      if (lastSyncedUpdatedAt != null)
+        'last_synced_updated_at': lastSyncedUpdatedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  SyncStatesCompanion copyWith({
+    Value<String>? entryId,
+    Value<int>? lastSyncedUpdatedAt,
+    Value<int>? rowid,
+  }) {
+    return SyncStatesCompanion(
+      entryId: entryId ?? this.entryId,
+      lastSyncedUpdatedAt: lastSyncedUpdatedAt ?? this.lastSyncedUpdatedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (entryId.present) {
+      map['entry_id'] = Variable<String>(entryId.value);
+    }
+    if (lastSyncedUpdatedAt.present) {
+      map['last_synced_updated_at'] = Variable<int>(lastSyncedUpdatedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyncStatesCompanion(')
+          ..write('entryId: $entryId, ')
+          ..write('lastSyncedUpdatedAt: $lastSyncedUpdatedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$OneiroDatabase extends GeneratedDatabase {
   _$OneiroDatabase(QueryExecutor e) : super(e);
   $OneiroDatabaseManager get managers => $OneiroDatabaseManager(this);
@@ -923,11 +1151,13 @@ abstract class _$OneiroDatabase extends GeneratedDatabase {
   late final $AppSettingsTable appSettings = $AppSettingsTable(this);
   late final $DismissedThemeWordsTable dismissedThemeWords =
       $DismissedThemeWordsTable(this);
+  late final $SyncStatesTable syncStates = $SyncStatesTable(this);
   late final DreamEntryDao dreamEntryDao = DreamEntryDao(
     this as OneiroDatabase,
   );
   late final DismissedThemeWordDao dismissedThemeWordDao =
       DismissedThemeWordDao(this as OneiroDatabase);
+  late final SyncStateDao syncStateDao = SyncStateDao(this as OneiroDatabase);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -936,6 +1166,7 @@ abstract class _$OneiroDatabase extends GeneratedDatabase {
     dreamEntries,
     appSettings,
     dismissedThemeWords,
+    syncStates,
   ];
 }
 
@@ -1477,6 +1708,151 @@ typedef $$DismissedThemeWordsTableProcessedTableManager =
       DismissedThemeWord,
       PrefetchHooks Function()
     >;
+typedef $$SyncStatesTableCreateCompanionBuilder =
+    SyncStatesCompanion Function({
+      required String entryId,
+      required int lastSyncedUpdatedAt,
+      Value<int> rowid,
+    });
+typedef $$SyncStatesTableUpdateCompanionBuilder =
+    SyncStatesCompanion Function({
+      Value<String> entryId,
+      Value<int> lastSyncedUpdatedAt,
+      Value<int> rowid,
+    });
+
+class $$SyncStatesTableFilterComposer
+    extends Composer<_$OneiroDatabase, $SyncStatesTable> {
+  $$SyncStatesTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get entryId => $composableBuilder(
+    column: $table.entryId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get lastSyncedUpdatedAt => $composableBuilder(
+    column: $table.lastSyncedUpdatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SyncStatesTableOrderingComposer
+    extends Composer<_$OneiroDatabase, $SyncStatesTable> {
+  $$SyncStatesTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get entryId => $composableBuilder(
+    column: $table.entryId,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get lastSyncedUpdatedAt => $composableBuilder(
+    column: $table.lastSyncedUpdatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SyncStatesTableAnnotationComposer
+    extends Composer<_$OneiroDatabase, $SyncStatesTable> {
+  $$SyncStatesTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get entryId =>
+      $composableBuilder(column: $table.entryId, builder: (column) => column);
+
+  GeneratedColumn<int> get lastSyncedUpdatedAt => $composableBuilder(
+    column: $table.lastSyncedUpdatedAt,
+    builder: (column) => column,
+  );
+}
+
+class $$SyncStatesTableTableManager
+    extends
+        RootTableManager<
+          _$OneiroDatabase,
+          $SyncStatesTable,
+          SyncState,
+          $$SyncStatesTableFilterComposer,
+          $$SyncStatesTableOrderingComposer,
+          $$SyncStatesTableAnnotationComposer,
+          $$SyncStatesTableCreateCompanionBuilder,
+          $$SyncStatesTableUpdateCompanionBuilder,
+          (
+            SyncState,
+            BaseReferences<_$OneiroDatabase, $SyncStatesTable, SyncState>,
+          ),
+          SyncState,
+          PrefetchHooks Function()
+        > {
+  $$SyncStatesTableTableManager(_$OneiroDatabase db, $SyncStatesTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SyncStatesTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SyncStatesTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SyncStatesTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback:
+              ({
+                Value<String> entryId = const Value.absent(),
+                Value<int> lastSyncedUpdatedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => SyncStatesCompanion(
+                entryId: entryId,
+                lastSyncedUpdatedAt: lastSyncedUpdatedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String entryId,
+                required int lastSyncedUpdatedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => SyncStatesCompanion.insert(
+                entryId: entryId,
+                lastSyncedUpdatedAt: lastSyncedUpdatedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SyncStatesTableProcessedTableManager =
+    ProcessedTableManager<
+      _$OneiroDatabase,
+      $SyncStatesTable,
+      SyncState,
+      $$SyncStatesTableFilterComposer,
+      $$SyncStatesTableOrderingComposer,
+      $$SyncStatesTableAnnotationComposer,
+      $$SyncStatesTableCreateCompanionBuilder,
+      $$SyncStatesTableUpdateCompanionBuilder,
+      (
+        SyncState,
+        BaseReferences<_$OneiroDatabase, $SyncStatesTable, SyncState>,
+      ),
+      SyncState,
+      PrefetchHooks Function()
+    >;
 
 class $OneiroDatabaseManager {
   final _$OneiroDatabase _db;
@@ -1487,4 +1863,6 @@ class $OneiroDatabaseManager {
       $$AppSettingsTableTableManager(_db, _db.appSettings);
   $$DismissedThemeWordsTableTableManager get dismissedThemeWords =>
       $$DismissedThemeWordsTableTableManager(_db, _db.dismissedThemeWords);
+  $$SyncStatesTableTableManager get syncStates =>
+      $$SyncStatesTableTableManager(_db, _db.syncStates);
 }

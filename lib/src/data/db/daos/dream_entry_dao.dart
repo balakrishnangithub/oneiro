@@ -48,6 +48,15 @@ class DreamEntryDao extends DatabaseAccessor<OneiroDatabase>
   Future<DreamEntry?> getById(String id) =>
       (select(dreamEntries)..where((t) => t.id.equals(id))).getSingleOrNull();
 
+  /// Every entry including tombstones — the full replication set for sync.
+  Future<List<DreamEntry>> getAllIncludingDeleted() =>
+      select(dreamEntries).get();
+
+  /// Applies a remote entry verbatim (sync pull): inserts or replaces all
+  /// columns, including the tombstone, without touching timestamps.
+  Future<void> upsertFromSync(DreamEntriesCompanion entry) =>
+      into(dreamEntries).insertOnConflictUpdate(entry);
+
   Future<void> insertEntry(DreamEntriesCompanion entry) =>
       into(dreamEntries).insert(entry);
 

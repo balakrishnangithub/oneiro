@@ -60,3 +60,21 @@ class DismissedThemeWords extends Table {
   @override
   Set<Column<Object>> get primaryKey => {word};
 }
+
+/// Per-entry sync bookkeeping (Stage E).
+///
+/// For every entry that ever participated in a sync, [lastSyncedUpdatedAt]
+/// records the `updatedAt` value that the local database and the remote
+/// vault last agreed on. An entry is dirty exactly when its current
+/// `updatedAt` differs from this value (or when no row exists yet).
+class SyncStates extends Table {
+  /// The dream entry this row tracks.
+  TextColumn get entryId => text()();
+
+  /// The entry `updatedAt` (millis since epoch) as of the last successful
+  /// push or pull.
+  IntColumn get lastSyncedUpdatedAt => integer()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {entryId};
+}
