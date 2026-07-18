@@ -146,9 +146,9 @@ class VaultCrypto {
   // --- OVault v1 constants ---------------------------------------------------
 
   /// scrypt parameters pinned by the OVault v1 format.
-  static const kdfN = 32768; // 2^15
-  static const kdfR = 8;
-  static const kdfP = 1;
+  static const defaultKdfN = 32768; // 2^15
+  static const defaultKdfR = 8;
+  static const defaultKdfP = 1;
 
   /// Random KDF salt length in bytes.
   static const saltLength = 16;
@@ -192,6 +192,9 @@ class VaultCrypto {
     String passphrase, {
     Uint8List? salt,
     Random? random,
+    int kdfN = defaultKdfN,
+    int kdfR = defaultKdfR,
+    int kdfP = defaultKdfP,
   }) async {
     final effectiveSalt =
         salt ?? _randomBytes(saltLength, random ?? Random.secure());
@@ -245,7 +248,7 @@ class VaultCrypto {
       if (utf8.decode(plaintext) != keyCheckPlaintext) {
         throw const WrongPassphraseException();
       }
-    } on SecretBoxAuthenticationError {
+    } on VaultAuthenticationException {
       throw const WrongPassphraseException();
     }
     return crypto;

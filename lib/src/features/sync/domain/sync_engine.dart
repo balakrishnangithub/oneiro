@@ -100,12 +100,22 @@ class SyncEngine {
   ///
   /// Throws [WrongPassphraseException] when the passphrase does not match an
   /// existing vault and [FormatException] on a malformed descriptor.
-  Future<VaultCrypto> unlockOrCreateVault(String passphrase) async {
+  ///
+  /// [kdfN] overrides the scrypt cost parameter only when CREATING a new
+  /// vault — tests pass a small value to stay fast. Unlocking always honors
+  /// the parameters recorded in the remote descriptor.
+  Future<VaultCrypto> unlockOrCreateVault(
+    String passphrase, {
+    int kdfN = VaultCrypto.defaultKdfN,
+  }) async {
     await _store.ensureStructure();
     final descriptorText = await _store.readDescriptor();
     final VaultCrypto crypto;
     if (descriptorText == null) {
-      final (descriptor, created) = await VaultCrypto.create(passphrase);
+      final (descriptor, created) = await VaultCrypto.create(
+        passphrase,
+        kdfN: kdfN,
+      );
       await _store.writeDescriptor(descriptor.encode());
       crypto = created;
     } else {
