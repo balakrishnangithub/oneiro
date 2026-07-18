@@ -1,8 +1,9 @@
-# Oneiro — Architecture (Stages A + B)
+# Oneiro — Architecture (Stages A + B + C)
 
 Oneiro is a dream-journal app for lucid dreamers. This document describes the
-Stage A layering, the Stage B training engine, and where the later stages
-(patterns, progress, sync, import) plug in without refactoring.
+Stage A layering, the Stage B training engine, the Stage C patterns/progress
+features, and where the later stages (sync, import) plug in without
+refactoring.
 
 ## Layers
 
@@ -20,14 +21,21 @@ lib/
     data/                    persistence, no Flutter widgets
       db/tables.dart         drift tables
       db/oneiro_database.dart  OneiroDatabase (+ .g.dart, committed)
-      db/daos/               DreamEntryDao (+ .g.dart, committed)
+      db/daos/               DreamEntryDao, DismissedThemeWordDao (+ .g.dart)
       repositories/          DreamRepository contract + DriftDreamRepository
       providers.dart         oneiroDatabaseProvider / dreamRepositoryProvider
     features/
       journal/               Stage A feature
         journal_providers.dart   search query + entries stream providers
         presentation/          pages + widgets (Consumer widgets only)
-      patterns|progress/      placeholder pages
+      patterns/               Stage C: theme words
+        domain/                 WordFrequencyAnalyzer + stopwords (pure Dart)
+        patterns_providers.dart filter, dismissed words, theme stream
+        presentation/          patterns page (ranked words, banish action)
+      progress/               Stage C: stats & milestones
+        domain/                 JournalStats, weekly histogram, achievements
+        progress_providers.dart today (injectable), stats/chart/milestones
+        presentation/          progress page (cards, bar chart, milestones)
       settings/               Stage B: full training settings UI
       training/               Stage B feature
         domain/                 pure Dart, no Flutter/plugins
@@ -90,19 +98,43 @@ Rules:
   millis of local midnight — day granularity), `text` (via Dart getter `body`),
   `isLucid`, `createdAt`, `updatedAt`, `deletedAt` (nullable tombstone).
 - `app_settings`: generic `key`/`value` store for all later settings.
+- `dismissed_theme_words` (v2): `word` (lowercased token, PK), `dismissedAt` —
+  theme words the user banished from the patterns page.
 - Deletion is always soft (`deletedAt`) so a sync stage can propagate
   tombstones before rows are purged. The DAO filters tombstones everywhere.
-- `schemaVersion` is 1; migrations land in `OneiroDatabase.migration`.
+- `schemaVersion` is 2; migrations land in `OneiroDatabase.migration`
+  (v1 → v2 creates `dismissed_theme_words`; covered by
+  `test/data/migration_test.dart`, which hand-builds a v1 file with raw
+  sqlite3 and upgrades it).
+
+## Patterns and progress (Stage C)
+
+- `features/patterns/domain/word_frequency_analyzer.dart` is pure Dart:
+  Unicode-aware tokenization (`\p{L}\p{M}`, so combining-mark scripts like
+  Tamil survive), `#hashtags` kept as first-class tokens that bypass the
+  stopword list, a hand-written English stopword list
+  (`domain/stopwords.dart`), minimum word length 3, optional lucid-only
+  filtering. `themeWordsProvider` recomputes from the entries stream minus
+  the dismissed-word stream; dismissing writes through
+  `DismissedThemeWordDao`. Tapping a word sets
+  `journalSearchQueryProvider` and navigates to the journal.
+- `features/progress/domain/journal_stats.dart` computes `JournalStats`
+  (totals, lucid %, current/longest day streaks, 7/30-day windows, average
+  words) from lightweight `EntrySummary` values with `today` injected, so
+  streaks are deterministic in tests. `weeklyActivity` produces a
+  Monday-anchored 8-week histogram.
+- `features/progress/domain/achievements.dart` holds the original
+  "Dreamwalker milestones": four tracks (journal entries, lucid dreams,
+  reality checks, dream clues heard) with named thresholds and
+  progress-to-next scaling. Entry/lucid counters come from
+  `DreamRepository`, the other two from `SettingsRepository`.
+- The progress page renders a stat-card grid, an fl_chart bar chart of the
+  weekly histogram, and the milestone list. fl_chart is pinned to 1.0.0
+  because 1.1.0 requires a newer `vector_math` than the Flutter 3.32 SDK
+  ships.
 
 ## Where later stages plug in
 
-- **Patterns (word/hashtag stats):** read-only queries over
-  `DreamEntryDao` (add a `patterns` DAO or repository). Replace
-  `features/patterns/` placeholder; the tab slot already exists.
-- **Progress (achievements/counters):** `DreamRepository.countEntries()` /
-  `countLucid()` already exist; the training counters
-  (`SettingsRepository.realityCheckCount()` / `dreamClueCount()`) are ready
-  for achievements; add a presentation-only feature in `features/progress/`.
 - **Sync (cloud backup):** implement a syncing `DreamRepository` (or wrap
   `DriftDreamRepository`) that pushes dirty rows and pulls remote changes;
   swap the implementation inside `dreamRepositoryProvider`. The UI does not
