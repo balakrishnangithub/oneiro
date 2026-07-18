@@ -1,0 +1,16 @@
+Oneiro is a free, open-source dream journal and lucid dreaming companion. Your dreams stay on your device; optional backup and multi-device sync is end-to-end encrypted to any WebDAV folder you control (pCloud, Nextcloud, …) or to a plain local folder.
+
+Features:
+• Dream journal — date-organized, searchable entries with lucid markers
+• Reality-check reminders with a guided ritual (custom count and daytime window)
+• Dream clues — gentle totem sounds during a night window to trigger lucidity
+• Morning journal reminder and training pause
+• Dream patterns — recurring themes and #hashtags across your journal
+• Progress — streaks, lucid percentage, weekly activity, achievement milestones
+• Voice dictation in the editor
+• Optional PIN lock
+• Encrypted sync ("OVault"): AES-256-GCM per entry, key derived from your passphrase with scrypt; zero-knowledge by design
+• Import of Awoken plain-text journal exports; export to text or JSON
+• Dark and light themes
+
+No ads, no accounts, no analytics, no paywalls. Source code and full format documentation: see the project repository.

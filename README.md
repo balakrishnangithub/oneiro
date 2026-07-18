@@ -68,7 +68,9 @@ flutter build apk --release
 ```
 
 Optional: regenerate launcher icons after changing `assets/icon/` with
-`dart run flutter_launcher_icons`.
+`dart run flutter_launcher_icons`. Ready to publish? Follow
+[docs/release-checklist.md](docs/release-checklist.md) — signing, GitHub
+releases and F-Droid metadata are already wired up.
 
 ### Verifying the Awoken importer against a real export
 

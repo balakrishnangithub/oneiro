@@ -1,0 +1,1 @@
+- First public release: dream journal, reality checks, dream clues, patterns, milestones, PIN lock, dictation, Awoken import, end-to-end encrypted WebDAV sync.
