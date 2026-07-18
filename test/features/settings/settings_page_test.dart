@@ -4,9 +4,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:oneiro/src/data/db/oneiro_database.dart';
 import 'package:oneiro/src/data/providers.dart';
 import 'package:oneiro/src/features/settings/presentation/settings_page.dart';
+import 'package:oneiro/src/features/sync/sync_providers.dart';
 import 'package:oneiro/src/features/training/data/settings_repository.dart';
 import 'package:oneiro/src/features/training/training_providers.dart';
 
+import '../../support/fake_sync_services.dart';
 import '../../support/fake_training_services.dart';
 import '../../support/test_database.dart';
 import '../../support/unmount_app.dart';
@@ -25,6 +27,11 @@ void main() {
         cluePlayerProvider.overrideWithValue(FakeCluePlayer()),
         notificationPermissionServiceProvider.overrideWithValue(
           FakeNotificationPermissionService(granted: false),
+        ),
+        // The Privacy section reads the credential vault; never let widget
+        // tests touch the real plugin.
+        secureCredentialsStoreProvider.overrideWithValue(
+          InMemorySecureCredentialsStore(),
         ),
       ],
       child: const MaterialApp(home: SettingsPage()),
@@ -56,6 +63,9 @@ void main() {
     expect(find.text('Morning journal reminder'), findsOneWidget);
     expect(find.text('Training pause'), findsOneWidget);
     expect(find.text('Notifications'), findsOneWidget);
+    // Stage F section; ensureVisible because the ListView builds lazily.
+    await tester.ensureVisible(find.text('Privacy'));
+    expect(find.text('Privacy'), findsOneWidget);
 
     await unmountApp(tester);
   });
