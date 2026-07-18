@@ -1,4 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- WebDAV sync and any network access. Note: flutter create only adds
+         INTERNET to the debug/profile manifests, so release builds MUST
+         declare it here or every network call fails with host-lookup errors. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Lets sync check connectivity before attempting uploads. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <!-- Runtime permission for posting notifications on Android 13+. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <!-- Reschedule training reminders after reboot / app update. -->
