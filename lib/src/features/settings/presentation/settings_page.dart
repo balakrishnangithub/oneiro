@@ -5,6 +5,7 @@ import 'package:intl/intl.dart';
 
 import '../../../routing/app_router.dart';
 import '../../backup/presentation/backup_section.dart';
+import '../../sync/presentation/sync_section.dart';
 import '../../training/domain/pause_service.dart';
 import '../../training/domain/training_settings.dart';
 import '../../training/training_providers.dart';
@@ -40,6 +41,8 @@ class SettingsPage extends ConsumerWidget {
             const _PermissionSection(),
             const SizedBox(height: 16),
             const BackupSection(),
+            const SizedBox(height: 16),
+            const SyncSection(),
             const SizedBox(height: 32),
           ],
         ),
