@@ -1,4 +1,4 @@
-# Oneiro — Architecture (Stages A + B + C)
+# Oneiro — Architecture (Stages A + B + C + D)
 
 Oneiro is a dream-journal app for lucid dreamers. This document describes the
 Stage A layering, the Stage B training engine, the Stage C patterns/progress
@@ -25,6 +25,10 @@ lib/
       repositories/          DreamRepository contract + DriftDreamRepository
       providers.dart         oneiroDatabaseProvider / dreamRepositoryProvider
     features/
+      backup/                 Stage D: Awoken import + text/JSON export
+        domain/                 parser, exporter, dedupe service (pure Dart)
+        data/                   file-picker and share-gateway plugin seams
+        presentation/           Settings "Backup & Import" section
       journal/               Stage A feature
         journal_providers.dart   search query + entries stream providers
         presentation/          pages + widgets (Consumer widgets only)
@@ -140,9 +144,41 @@ Rules:
   swap the implementation inside `dreamRepositoryProvider`. The UI does not
   change. UUID primary keys and `updatedAt`/`deletedAt` tombstones were chosen
   for exactly this.
-- **Import (Awoken-style text export):** a `data/import/` parser produces
-  `DreamEntriesCompanion`s and inserts through the DAO; day-granularity dates
-  match the export format. UI entry point lives in Settings.
+
+## Backup and import (Stage D)
+
+- `features/backup/domain/awoken_import_parser.dart` parses the Awoken
+  plain-text export grammar: a `----` line (exactly four dashes) precedes
+  every entry; labels are `Date: `, `Lucidity: ` and `Dream:`; the body runs
+  to the next separator. The parser is pure Dart, never throws, and is
+  liberal: CRLF tolerated, the weekday token ignored (mismatches accepted),
+  and September read as `Sep`/`Sept`/`September`. Malformed blocks are
+  counted in `skippedCount` with human-readable `warnings`.
+- `features/backup/domain/awoken_exporter.dart` renders entries back into
+  the same grammar (title line names ONEIRO), with the weekday recomputed
+  from the date. Round-trip property: `parse(export(entries)) == entries`.
+- `features/backup/domain/awoken_import_service.dart` dedupes on a
+  deterministic FNV-1a signature of `(dreamDate, normalized body)` where
+  normalization trims and collapses whitespace. One bulk pre-check loads all
+  live signatures via `DreamRepository.getAllActive()`, so re-importing the
+  same file imports 0; tombstoned entries do not block re-import.
+- `features/backup/domain/journal_json_export.dart` is the full-fidelity
+  backup (ids, `createdAt`/`updatedAt`, pretty-printed); the schema is
+  documented in `docs/backup-format.md`.
+- Plugin seams: `ImportFilePicker` (file_picker) and `BackupShareGateway`
+  (path_provider + share_plus, writes to app documents then opens the share
+  sheet) live in `features/backup/data/` behind providers in
+  `backup_providers.dart`; widget tests substitute the fakes in
+  `test/support/fake_backup_services.dart`.
+- UI: the "Backup & Import" section on the Settings page
+  (`features/backup/presentation/backup_section.dart`) runs import as
+  pick → parse → preview dialog (count, date range, lucid count, warnings)
+  → progress dialog → result ("imported X, skipped Y duplicates, Z
+  unreadable").
+- `test/features/backup/awoken_real_file_test.dart` verifies the parser
+  against a real export file only when `AWOKEN_EXPORT_PATH` points at one
+  (377 entries / 7 lucid / 2026-05-18 → 2015-11-14 / 0 skipped); it skips
+  itself otherwise. The real file is private and must never be committed.
 
 ## Testing notes
 
