@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../../routing/app_router.dart';
+import '../../backup/presentation/backup_section.dart';
 import '../../training/domain/pause_service.dart';
 import '../../training/domain/training_settings.dart';
 import '../../training/training_providers.dart';
@@ -37,6 +38,8 @@ class SettingsPage extends ConsumerWidget {
             _PauseSection(settings: settings),
             const SizedBox(height: 16),
             const _PermissionSection(),
+            const SizedBox(height: 16),
+            const BackupSection(),
             const SizedBox(height: 32),
           ],
         ),
@@ -46,8 +49,8 @@ class SettingsPage extends ConsumerWidget {
 }
 
 /// Card with a section title, used by every settings group.
-class _SectionCard extends StatelessWidget {
-  const _SectionCard({required this.title, required this.children});
+class SettingsSectionCard extends StatelessWidget {
+  const SettingsSectionCard({super.key, required this.title, required this.children});
 
   final String title;
   final List<Widget> children;
@@ -108,7 +111,7 @@ class _RealityCheckSection extends _SettingsSection {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return _SectionCard(
+    return SettingsSectionCard(
       title: 'Reality checks',
       children: [
         SwitchListTile(
@@ -181,7 +184,7 @@ class _DreamClueSection extends _SettingsSection {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return _SectionCard(
+    return SettingsSectionCard(
       title: 'Dream clues',
       children: [
         SwitchListTile(
@@ -278,7 +281,7 @@ class _MorningReminderSection extends _SettingsSection {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return _SectionCard(
+    return SettingsSectionCard(
       title: 'Morning journal reminder',
       children: [
         SwitchListTile(
@@ -310,7 +313,7 @@ class _PauseSection extends _SettingsSection {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final paused = PauseService.isPaused(settings, DateTime.now());
-    return _SectionCard(
+    return SettingsSectionCard(
       title: 'Training pause',
       children: [
         if (paused) ...[
@@ -364,7 +367,7 @@ class _PermissionSection extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final granted = ref.watch(notificationPermissionGrantedProvider);
-    return _SectionCard(
+    return SettingsSectionCard(
       title: 'Notifications',
       children: [
         granted.when(
