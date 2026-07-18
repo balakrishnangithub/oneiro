@@ -122,7 +122,11 @@ class BackupSection extends ConsumerWidget {
         );
 
     refresh = null;
-    if (context.mounted) Navigator.of(context).pop();
+    // The dialog was pushed on the ROOT navigator (showDialog default), but
+    // inside go_router's StatefulShellRoute `Navigator.of(context)` resolves
+    // to the branch navigator — popping there removes the Settings page
+    // itself and leaves a black screen. Pop the root navigator instead.
+    if (context.mounted) Navigator.of(context, rootNavigator: true).pop();
     await dialogFuture;
     return outcome;
   }

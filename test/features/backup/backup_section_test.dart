@@ -197,4 +197,47 @@ void main() {
 
     await unmountApp(tester);
   });
+
+  testWidgets(
+    'import completion leaves the page in place under a nested navigator',
+    (tester) async {
+      // Regression: the progress dialog is pushed on the ROOT navigator, so
+      // dismissing it must pop the root navigator too. The app shell gives
+      // each tab its own (branch) navigator; popping that one removes the
+      // page itself and leaves a black screen.
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            oneiroDatabaseProvider.overrideWithValue(db),
+            importFilePickerProvider.overrideWithValue(picker),
+            backupShareGatewayProvider.overrideWithValue(gateway),
+          ],
+          child: MaterialApp(
+            home: Navigator(
+              onGenerateRoute: (_) => MaterialPageRoute<void>(
+                builder: (_) => const Scaffold(body: BackupSection()),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Import from Awoken export'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Import'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Import complete'), findsOneWidget);
+      expect(await db.dreamEntryDao.countActive(), 2);
+
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
+
+      // With the bug, the branch route was popped and the page was gone.
+      expect(find.text('Import from Awoken export'), findsOneWidget);
+
+      await unmountApp(tester);
+    },
+  );
 }
