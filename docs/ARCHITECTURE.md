@@ -1,4 +1,4 @@
-# Oneiro — Architecture (Stages A + B + C + D)
+# Oneiro — Architecture (Stages A + B + C + D + E + F)
 
 Oneiro is a dream-journal app for lucid dreamers. This document describes the
 Stage A layering, the Stage B training engine, the Stage C patterns/progress
@@ -36,6 +36,14 @@ lib/
         domain/                 WordFrequencyAnalyzer + stopwords (pure Dart)
         patterns_providers.dart filter, dismissed words, theme stream
         presentation/          patterns page (ranked words, banish action)
+      privacy/               Stage F: PIN lock
+        domain/                 PinHasher (scrypt stored strings, pure Dart),
+                                PinLockoutPolicy (injectable clock)
+        data/                   PinRepository over SecureCredentialsStore
+        presentation/           PinLockPage, AppLockGate, Settings section
+      speech/                Stage F: editor dictation
+        domain/                 SpeechRecognizer seam + SpeechPhrase
+        data/                   SttSpeechRecognizer (speech_to_text plugin)
       progress/               Stage C: stats & milestones
         domain/                 JournalStats, weekly histogram, achievements
         progress_providers.dart today (injectable), stats/chart/milestones
@@ -144,6 +152,39 @@ Rules:
   swap the implementation inside `dreamRepositoryProvider`. The UI does not
   change. UUID primary keys and `updatedAt`/`deletedAt` tombstones were chosen
   for exactly this.
+
+## PIN lock and dictation (Stage F)
+
+- **PIN lock** (`features/privacy/`): an optional 4–8 digit PIN gates app
+  open. The PIN is never stored — only `scrypt(PIN, random salt)` as a
+  self-describing string (`opin1$N$r$p$len$salt$hash`, same pointycastle
+  pattern as the vault crypto, N pinned at 2^14) in the platform credential
+  vault via the existing `SecureCredentialsStore` seam
+  (`PinRepository.hashKey`); hash presence IS the enabled flag, so there is
+  nothing to migrate and nothing secret in drift.
+- `AppLockGate` wraps the navigator in `MaterialApp.router`'s `builder`:
+  a blank night surface while the credential vault is read (no content
+  flash), then the `PinLockPage` overlay while locked. Re-locking is wired
+  through `WidgetsBindingObserver` on paused/inactive — never on rebuilds.
+  Wrong entries shake the dots and count down remaining attempts; 5
+  consecutive failures trigger a 30-second cooldown from the pure-Dart
+  `PinLockoutPolicy` (session-scoped on purpose; clock injected via
+  `appLockClockProvider` so tests advance a manual clock instead of waiting
+  real seconds).
+- **Dictation** (`features/speech/`): `SpeechRecognizer` is a thin seam
+  (`initialize` = permission + availability, `start`/`stop`, partial and
+  final `SpeechPhrase`s) over `package:speech_to_text`; the impl re-listens
+  when the engine ends a session so dictation feels continuous. The dream
+  editor's mic toggle appends utterances into the text field with a single
+  separating space, previews partials live and commits the in-flight
+  partial on stop. `RECORD_AUDIO` carries a Play-Store-facing rationale
+  comment in the manifest.
+- Widget tests substitute `FakeSpeechRecognizer`
+  (`test/support/fake_speech_recognizer.dart`) and the in-memory
+  `SecureCredentialsStore`; the real plugins are never exercised on the
+  host. Note: while the simulated lifecycle is `paused` the test scheduler
+  disables frames (like a real device), so lifecycle tests assert the lock
+  state immediately and the overlay after a simulated resume.
 
 ## Backup and import (Stage D)
 
