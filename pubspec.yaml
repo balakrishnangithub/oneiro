@@ -29,6 +29,9 @@ dependencies:
   timezone: ^0.10.1
   flutter_timezone: ^4.1.0
   fl_chart: 1.0.0
+  # Backup & import (behind thin interfaces)
+  file_picker: ^10.1.2
+  share_plus: ^11.0.0
 
 dev_dependencies:
   flutter_test:
