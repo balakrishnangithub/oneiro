@@ -21,20 +21,22 @@ void main() {
     }
   });
 
-  test('zero value: nothing reached, progress 0 towards the first milestone',
-      () {
-    final progress = computeAchievements(
-      journalEntries: 0,
-      lucidDreams: 0,
-      realityChecks: 0,
-      dreamClues: 0,
-    ).first;
-    expect(progress.milestonesReached, 0);
-    expect(progress.currentMilestoneName, isNull);
-    expect(progress.nextMilestone!.threshold, 1);
-    expect(progress.progressToNext, 0);
-    expect(progress.isComplete, isFalse);
-  });
+  test(
+    'zero value: nothing reached, progress 0 towards the first milestone',
+    () {
+      final progress = computeAchievements(
+        journalEntries: 0,
+        lucidDreams: 0,
+        realityChecks: 0,
+        dreamClues: 0,
+      ).first;
+      expect(progress.milestonesReached, 0);
+      expect(progress.currentMilestoneName, isNull);
+      expect(progress.nextMilestone!.threshold, 1);
+      expect(progress.progressToNext, 0);
+      expect(progress.isComplete, isFalse);
+    },
+  );
 
   test('exact threshold counts as reached', () {
     final entries = achievementTracks.first;
@@ -46,7 +48,10 @@ void main() {
 
   test('progress scales between the previous and next milestone', () {
     final entries = achievementTracks.first; // 1 / 10 / 50 / 100 / 500
-    expect(AchievementProgress(entries, 5).progressToNext, closeTo(4 / 9, 1e-9));
+    expect(
+      AchievementProgress(entries, 5).progressToNext,
+      closeTo(4 / 9, 1e-9),
+    );
     expect(AchievementProgress(entries, 30).progressToNext, 0.5);
     expect(AchievementProgress(entries, 1).progressToNext, 0);
   });

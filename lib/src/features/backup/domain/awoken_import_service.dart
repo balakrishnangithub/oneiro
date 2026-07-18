@@ -60,10 +60,7 @@ class AwokenImportService {
     var duplicates = 0;
     for (var i = 0; i < parsed.length; i++) {
       final entry = parsed[i];
-      final signature = dreamContentSignature(
-        entry.date.dayMillis,
-        entry.body,
-      );
+      final signature = dreamContentSignature(entry.date.dayMillis, entry.body);
       if (seen.contains(signature)) {
         duplicates++;
       } else {

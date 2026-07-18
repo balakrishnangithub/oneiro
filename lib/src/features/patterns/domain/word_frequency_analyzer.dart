@@ -39,10 +39,7 @@ class WordFrequencyAnalyzer {
   static const int minWordLength = 3;
 
   /// Letters and combining marks (e.g. Tamil vowel signs) form tokens.
-  static final RegExp _separator = RegExp(
-    r'[^\p{L}\p{M}#]+',
-    unicode: true,
-  );
+  static final RegExp _separator = RegExp(r'[^\p{L}\p{M}#]+', unicode: true);
   static final RegExp _leadingHashes = RegExp('^#+');
 
   /// Extracts the normalized, deduplicated tokens of a single [text].

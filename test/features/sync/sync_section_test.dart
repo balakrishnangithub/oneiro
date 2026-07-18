@@ -67,10 +67,7 @@ void main() {
   }
 
   /// Configures the local-folder backend pointing at [dir] through the UI.
-  Future<void> configureLocalFolder(
-    WidgetTester tester,
-    Directory dir,
-  ) async {
+  Future<void> configureLocalFolder(WidgetTester tester, Directory dir) async {
     await tester.tap(find.text('Local folder'));
     await tester.pumpAndSettle();
     await tester.enterText(
@@ -81,8 +78,9 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('renders zero-knowledge explainer, locked state, never synced',
-      (tester) async {
+  testWidgets('renders zero-knowledge explainer, locked state, never synced', (
+    tester,
+  ) async {
     await pumpSection(tester);
 
     expect(find.text('Encrypted Sync'), findsOneWidget);
@@ -120,8 +118,10 @@ void main() {
     expect(settings.url, 'https://webdav.example.com');
     expect(settings.username, 'dreamer');
     expect(settings.basePath, '/oneiro-vault'); // default kept
-    expect(secureStore.values[SecureCredentialKeys.syncPassword],
-        's3cret-app-password');
+    expect(
+      secureStore.values[SecureCredentialKeys.syncPassword],
+      's3cret-app-password',
+    );
 
     // The password must not appear anywhere in app_settings.
     final rows = await db.select(db.appSettings).get();
@@ -133,8 +133,9 @@ void main() {
     await unmountApp(tester);
   });
 
-  testWidgets('local folder backend persists and shows folder field',
-      (tester) async {
+  testWidgets('local folder backend persists and shows folder field', (
+    tester,
+  ) async {
     await pumpSection(tester);
 
     await tester.tap(find.text('Local folder'));
@@ -228,8 +229,9 @@ void main() {
     await unmountApp(tester);
   });
 
-  testWidgets('sync now reports counts and, when locked, explains the lock',
-      (tester) async {
+  testWidgets('sync now reports counts and, when locked, explains the lock', (
+    tester,
+  ) async {
     final dir = tempVaultDir();
     await pumpSection(tester);
     await configureLocalFolder(tester, dir);
@@ -241,10 +243,7 @@ void main() {
       find.text('Sync now'),
       find.text('Vault is locked — unlock it to sync'),
     );
-    expect(
-      find.text('Vault is locked — unlock it to sync'),
-      findsOneWidget,
-    );
+    expect(find.text('Vault is locked — unlock it to sync'), findsOneWidget);
 
     // Unlock (remember off → passphrase is not stored), then sync.
     await tester.enterText(

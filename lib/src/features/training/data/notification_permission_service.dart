@@ -16,8 +16,9 @@ abstract class NotificationPermissionService {
 /// [NotificationPermissionService] backed by `flutter_local_notifications`.
 class FlutterNotificationPermissionService
     implements NotificationPermissionService {
-  FlutterNotificationPermissionService([FlutterLocalNotificationsPlugin? plugin])
-    : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
+  FlutterNotificationPermissionService([
+    FlutterLocalNotificationsPlugin? plugin,
+  ]) : _plugin = plugin ?? FlutterLocalNotificationsPlugin();
 
   final FlutterLocalNotificationsPlugin _plugin;
 
@@ -27,7 +28,8 @@ class FlutterNotificationPermissionService
       >();
 
   @override
-  Future<bool> isGranted() async => await _android?.areNotificationsEnabled() ?? true;
+  Future<bool> isGranted() async =>
+      await _android?.areNotificationsEnabled() ?? true;
 
   @override
   Future<bool> request() async =>

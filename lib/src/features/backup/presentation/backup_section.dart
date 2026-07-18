@@ -50,10 +50,8 @@ class BackupSection extends ConsumerWidget {
     if (!context.mounted) return;
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => _ImportPreviewDialog(
-        fileName: picked.name,
-        result: result,
-      ),
+      builder: (context) =>
+          _ImportPreviewDialog(fileName: picked.name, result: result),
     );
     if (confirmed != true || !context.mounted) return;
 
@@ -219,10 +217,7 @@ class _ImportPreviewDialog extends StatelessWidget {
               ),
             if (result.warnings.isNotEmpty) ...[
               const SizedBox(height: 12),
-              Text(
-                'Warnings',
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
+              Text('Warnings', style: Theme.of(context).textTheme.titleSmall),
               for (final warning in result.warnings.take(5))
                 Text(
                   '• $warning',

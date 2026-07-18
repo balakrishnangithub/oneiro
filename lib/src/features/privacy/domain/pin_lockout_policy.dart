@@ -48,8 +48,9 @@ class PinLockoutPolicy {
   }
 
   /// Whether another failure is allowed before the cooldown starts.
-  int get remainingAttempts =>
-      isCoolingDown ? 0 : (maxFailures - _consecutiveFailures).clamp(0, maxFailures);
+  int get remainingAttempts => isCoolingDown
+      ? 0
+      : (maxFailures - _consecutiveFailures).clamp(0, maxFailures);
 
   /// Records one wrong PIN. Returns true when this failure STARTED the
   /// cooldown (i.e. the UI should switch to the countdown). Calls while

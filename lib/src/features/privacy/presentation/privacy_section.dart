@@ -124,13 +124,16 @@ class PrivacySection extends ConsumerWidget {
           secondary: Icon(enabled ? Icons.lock : Icons.lock_open_outlined),
           title: const Text('PIN lock'),
           subtitle: Text(
-            enabled ? 'Oneiro asks for your PIN on open' : 'Journal opens freely',
+            enabled
+                ? 'Oneiro asks for your PIN on open'
+                : 'Journal opens freely',
           ),
           value: enabled,
           onChanged: enabledAsync.isLoading
               ? null
-              : (value) =>
-                    value ? _enableFlow(context, ref) : _disableFlow(context, ref),
+              : (value) => value
+                    ? _enableFlow(context, ref)
+                    : _disableFlow(context, ref),
         ),
         if (enabled)
           ListTile(

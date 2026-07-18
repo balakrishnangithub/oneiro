@@ -43,14 +43,8 @@ void main() {
     await tester.pumpWidget(_wrap(db));
     await tester.pumpAndSettle();
 
-    expect(
-      find.text(formatDreamDate(DateTime(2026, 5, 18))),
-      findsOneWidget,
-    );
-    expect(
-      find.text(formatDreamDate(DateTime(2026, 5, 17))),
-      findsOneWidget,
-    );
+    expect(find.text(formatDreamDate(DateTime(2026, 5, 18))), findsOneWidget);
+    expect(find.text(formatDreamDate(DateTime(2026, 5, 17))), findsOneWidget);
     expect(find.text('Flying over a silent city'), findsOneWidget);
     expect(find.text('A library with endless stairs'), findsOneWidget);
     // Exactly one lucid moon marker.

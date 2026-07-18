@@ -37,12 +37,7 @@ enum AppLockStatus {
 }
 
 /// Outcome of one PIN submission on the lock screen.
-enum PinSubmitResult {
-  unlocked,
-  wrongPin,
-  cooldownStarted,
-  coolingDown,
-}
+enum PinSubmitResult { unlocked, wrongPin, cooldownStarted, coolingDown }
 
 /// Immutable view of the app lock for the gate/lock screen.
 class AppLockState {

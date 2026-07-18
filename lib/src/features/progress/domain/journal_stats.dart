@@ -150,7 +150,9 @@ List<WeekBucket> weeklyActivity(
 }) {
   final todayStart = today.startOfDay;
   // DateTime.weekday: Monday = 1 ... Sunday = 7.
-  final thisMonday = todayStart.subtract(Duration(days: todayStart.weekday - 1));
+  final thisMonday = todayStart.subtract(
+    Duration(days: todayStart.weekday - 1),
+  );
   final firstMonday = thisMonday.subtract(Duration(days: 7 * (weeks - 1)));
 
   final counts = List<int>.filled(weeks, 0);

@@ -10,7 +10,11 @@ Future<void> main() async {
   final container = ProviderContainer();
   await container
       .read(notificationGatewayProvider)
-      .initialize(onTap: (payload) => handleTrainingNotificationTap(container, payload));
+      .initialize(
+        onTap: (payload) => handleTrainingNotificationTap(container, payload),
+      );
 
-  runApp(UncontrolledProviderScope(container: container, child: const OneiroApp()));
+  runApp(
+    UncontrolledProviderScope(container: container, child: const OneiroApp()),
+  );
 }

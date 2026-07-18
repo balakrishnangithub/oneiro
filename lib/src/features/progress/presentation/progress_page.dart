@@ -129,8 +129,7 @@ class _WeeklyChartCard extends ConsumerWidget {
               height: 160,
               child: weeksAsync.when(
                 loading: () => const Center(child: CircularProgressIndicator()),
-                error: (error, _) =>
-                    const Center(child: Text('No chart data')),
+                error: (error, _) => const Center(child: Text('No chart data')),
                 data: (weeks) => _WeeklyBarChart(weeks: weeks),
               ),
             ),
@@ -149,7 +148,10 @@ class _WeeklyBarChart extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final maxCount = weeks.fold<int>(0, (max, w) => w.count > max ? w.count : max);
+    final maxCount = weeks.fold<int>(
+      0,
+      (max, w) => w.count > max ? w.count : max,
+    );
     return BarChart(
       BarChartData(
         maxY: (maxCount + 1).toDouble(),

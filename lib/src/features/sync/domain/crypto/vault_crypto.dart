@@ -180,9 +180,7 @@ class VaultCrypto {
   }) {
     final derivator = Scrypt()
       ..init(ScryptParameters(n, r, p, keyLength, salt));
-    return derivator.process(
-      Uint8List.fromList(utf8.encode(passphrase)),
-    );
+    return derivator.process(Uint8List.fromList(utf8.encode(passphrase)));
   }
 
   /// Creates a new vault: generates a random [salt] (unless supplied, e.g. by
@@ -205,7 +203,13 @@ class VaultCrypto {
         'must be $saltLength bytes',
       );
     }
-    final key = _deriveKey(passphrase, effectiveSalt, n: kdfN, r: kdfR, p: kdfP);
+    final key = _deriveKey(
+      passphrase,
+      effectiveSalt,
+      n: kdfN,
+      r: kdfR,
+      p: kdfP,
+    );
     final crypto = VaultCrypto._(key);
     final check = await crypto._encryptRaw(
       utf8.encode(keyCheckPlaintext),

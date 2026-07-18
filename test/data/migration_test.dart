@@ -72,8 +72,11 @@ File _createV2DatabaseFile(Directory dir) {
     'sync.url',
     'https://webdav.example.com',
   ]);
-  db.execute('INSERT INTO dismissed_theme_words (word, dismissed_at) '
-      'VALUES (?, ?)', ['flying', 3000]);
+  db.execute(
+    'INSERT INTO dismissed_theme_words (word, dismissed_at) '
+    'VALUES (?, ?)',
+    ['flying', 3000],
+  );
   db.execute('PRAGMA user_version = 2');
   db.dispose();
   return file;

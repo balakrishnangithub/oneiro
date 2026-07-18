@@ -70,10 +70,7 @@ void main() {
     await pumpGate(tester);
 
     expect(find.text('Oneiro is locked'), findsOneWidget);
-    expect(
-      find.text('Enter your PIN to open your journal'),
-      findsOneWidget,
-    );
+    expect(find.text('Enter your PIN to open your journal'), findsOneWidget);
     // The shell stays in the tree (navigation state preserved) but is
     // covered by the opaque lock page.
     expect(find.text('Journal content'), findsOneWidget);
@@ -157,8 +154,9 @@ void main() {
     await unmountApp(tester);
   });
 
-  testWidgets('backgrounding the app re-locks an unlocked session',
-      (tester) async {
+  testWidgets('backgrounding the app re-locks an unlocked session', (
+    tester,
+  ) async {
     await seedPin('4471');
     await pumpGate(tester);
     await enterPin(tester, '4471');

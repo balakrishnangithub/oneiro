@@ -100,9 +100,9 @@ void main() {
     expect(deviceB.engine.isUnlocked, isTrue);
 
     await expectLater(
-      _Device(LocalDirectoryVaultStore(vaultDir.path))
-          .engine
-          .unlockOrCreateVault('wrong passphrase', kdfN: 256),
+      _Device(
+        LocalDirectoryVaultStore(vaultDir.path),
+      ).engine.unlockOrCreateVault('wrong passphrase', kdfN: 256),
       throwsA(isA<WrongPassphraseException>()),
     );
   });
@@ -149,50 +149,53 @@ void main() {
     expect(onA.updatedAt, 2000);
   });
 
-  test('conflict: newer remote edit wins over older local edit (LWW)',
-      () async {
-    final entries = await seedBothDevices(count: 1);
-    final id = entries.single.id;
+  test(
+    'conflict: newer remote edit wins over older local edit (LWW)',
+    () async {
+      final entries = await seedBothDevices(count: 1);
+      final id = entries.single.id;
 
-    // A edits at t=2000, B edits later at t=3000; B syncs first.
-    deviceA.nowMs = 2000;
-    await deviceA.repository.updateEntry(
-      (await deviceA.repository.getById(id))!.copyWith(body: 'A version'),
-    );
-    deviceB.nowMs = 3000;
-    await deviceB.repository.updateEntry(
-      (await deviceB.repository.getById(id))!.copyWith(body: 'B version'),
-    );
-    final pushB = await deviceB.engine.sync();
-    expect(pushB.pushed, 1);
-    expect(pushB.conflictsResolved, 0); // remote was unchanged: plain push
+      // A edits at t=2000, B edits later at t=3000; B syncs first.
+      deviceA.nowMs = 2000;
+      await deviceA.repository.updateEntry(
+        (await deviceA.repository.getById(id))!.copyWith(body: 'A version'),
+      );
+      deviceB.nowMs = 3000;
+      await deviceB.repository.updateEntry(
+        (await deviceB.repository.getById(id))!.copyWith(body: 'B version'),
+      );
+      final pushB = await deviceB.engine.sync();
+      expect(pushB.pushed, 1);
+      expect(pushB.conflictsResolved, 0); // remote was unchanged: plain push
 
-    // A now syncs: local is dirty, but B's version is newer → remote wins.
-    final syncA = await deviceA.engine.sync();
-    expect(syncA.pushed, 0);
-    expect(syncA.pulled, 1);
-    expect(syncA.conflictsResolved, 1);
-    expect((await deviceA.repository.getById(id))!.body, 'B version');
-    expect((await deviceA.repository.getById(id))!.updatedAt, 3000);
+      // A now syncs: local is dirty, but B's version is newer → remote wins.
+      final syncA = await deviceA.engine.sync();
+      expect(syncA.pushed, 0);
+      expect(syncA.pulled, 1);
+      expect(syncA.conflictsResolved, 1);
+      expect((await deviceA.repository.getById(id))!.body, 'B version');
+      expect((await deviceA.repository.getById(id))!.updatedAt, 3000);
 
-    // And once more in the other direction: A's newer edit (t=4000) beats
-    // B's older one (t=3500) even though B pushes first.
-    deviceA.nowMs = 4000;
-    await deviceA.repository.updateEntry(
-      (await deviceA.repository.getById(id))!.copyWith(body: 'A newer'),
-    );
-    deviceB.nowMs = 3500;
-    await deviceB.repository.updateEntry(
-      (await deviceB.repository.getById(id))!.copyWith(body: 'B older'),
-    );
-    await deviceB.engine.sync(); // pushes 3500 (remote was clean: no conflict)
-    final syncA2 = await deviceA.engine.sync();
-    expect(syncA2.pushed, 1); // A's 4000 wins and is uploaded
-    expect(syncA2.conflictsResolved, 1);
-    final syncB2 = await deviceB.engine.sync();
-    expect(syncB2.pulled, 1);
-    expect((await deviceB.repository.getById(id))!.body, 'A newer');
-  });
+      // And once more in the other direction: A's newer edit (t=4000) beats
+      // B's older one (t=3500) even though B pushes first.
+      deviceA.nowMs = 4000;
+      await deviceA.repository.updateEntry(
+        (await deviceA.repository.getById(id))!.copyWith(body: 'A newer'),
+      );
+      deviceB.nowMs = 3500;
+      await deviceB.repository.updateEntry(
+        (await deviceB.repository.getById(id))!.copyWith(body: 'B older'),
+      );
+      await deviceB.engine
+          .sync(); // pushes 3500 (remote was clean: no conflict)
+      final syncA2 = await deviceA.engine.sync();
+      expect(syncA2.pushed, 1); // A's 4000 wins and is uploaded
+      expect(syncA2.conflictsResolved, 1);
+      final syncB2 = await deviceB.engine.sync();
+      expect(syncB2.pulled, 1);
+      expect((await deviceB.repository.getById(id))!.body, 'A newer');
+    },
+  );
 
   test('deletion on B propagates to A as a tombstone', () async {
     final entries = await seedBothDevices(count: 2);
@@ -234,10 +237,7 @@ void main() {
 
     expect(report.pulled, 3); // two live entries + one tombstone
     final active = await restored.repository.getAllActive();
-    expect(active.map((e) => e.id).toSet(), {
-      entries[0].id,
-      entries[1].id,
-    });
+    expect(active.map((e) => e.id).toSet(), {entries[0].id, entries[1].id});
     expect(
       (await restored.repository.getById(entries[2].id))!.deletedAt,
       isNotNull,
@@ -250,45 +250,48 @@ void main() {
     expect(settled.skipped, 3);
   });
 
-  test('corrupted remote file warns, sync continues, entry stays dirty',
-      () async {
-    final entries = await seedBothDevices(count: 2);
-    final corrupted = entries[0];
-    final clean = entries[1];
+  test(
+    'corrupted remote file warns, sync continues, entry stays dirty',
+    () async {
+      final entries = await seedBothDevices(count: 2);
+      final corrupted = entries[0];
+      final clean = entries[1];
 
-    // Corrupt one remote file and make a legit remote change to the other.
-    await deviceA.store.write(
-      corrupted.id,
-      Uint8List.fromList('garbage, not json'.codeUnits),
-    );
-    deviceB.nowMs = 2000;
-    await deviceB.repository.updateEntry(
-      (await deviceB.repository.getById(clean.id))!.copyWith(body: 'B edit'),
-    );
-    await deviceB.engine.sync();
+      // Corrupt one remote file and make a legit remote change to the other.
+      await deviceA.store.write(
+        corrupted.id,
+        Uint8List.fromList('garbage, not json'.codeUnits),
+      );
+      deviceB.nowMs = 2000;
+      await deviceB.repository.updateEntry(
+        (await deviceB.repository.getById(clean.id))!.copyWith(body: 'B edit'),
+      );
+      await deviceB.engine.sync();
 
-    final report = await deviceA.engine.sync();
-    expect(report.warnings, hasLength(1));
-    expect(report.warnings.single, contains(corrupted.id));
-    expect(report.pulled, 1); // the clean entry still replicated
-    expect((await deviceA.repository.getById(clean.id))!.body, 'B edit');
+      final report = await deviceA.engine.sync();
+      expect(report.warnings, hasLength(1));
+      expect(report.warnings.single, contains(corrupted.id));
+      expect(report.pulled, 1); // the clean entry still replicated
+      expect((await deviceA.repository.getById(clean.id))!.body, 'B edit');
 
-    // The corrupted entry was not marked synced, so a later run retries it.
-    final states = await deviceA.db.syncStateDao.getLastSyncedMap();
-    expect(states[corrupted.id], 1000);
-    expect(states[clean.id], 2000);
+      // The corrupted entry was not marked synced, so a later run retries it.
+      final states = await deviceA.db.syncStateDao.getLastSyncedMap();
+      expect(states[corrupted.id], 1000);
+      expect(states[clean.id], 2000);
 
-    // A dirty local entry is NOT clobbered over a corrupted remote file.
-    deviceA.nowMs = 3000;
-    await deviceA.repository.updateEntry(
-      (await deviceA.repository.getById(corrupted.id))!
-          .copyWith(body: 'A local edit'),
-    );
-    final blocked = await deviceA.engine.sync();
-    expect(blocked.warnings, isNotEmpty);
-    expect(blocked.pushed, 0);
-    // The corrupted remote bytes are still there, untouched.
-    final raw = await deviceA.store.read(corrupted.id);
-    expect(String.fromCharCodes(raw!), 'garbage, not json');
-  });
+      // A dirty local entry is NOT clobbered over a corrupted remote file.
+      deviceA.nowMs = 3000;
+      await deviceA.repository.updateEntry(
+        (await deviceA.repository.getById(
+          corrupted.id,
+        ))!.copyWith(body: 'A local edit'),
+      );
+      final blocked = await deviceA.engine.sync();
+      expect(blocked.warnings, isNotEmpty);
+      expect(blocked.pushed, 0);
+      // The corrupted remote bytes are still there, untouched.
+      final raw = await deviceA.store.read(corrupted.id);
+      expect(String.fromCharCodes(raw!), 'garbage, not json');
+    },
+  );
 }

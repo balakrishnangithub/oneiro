@@ -20,21 +20,24 @@ void main() {
   tearDown(() async => db.close());
 
   group('DriftDreamRepository', () {
-    test('createEntry assigns id, day-normalized date and timestamps', () async {
-      final entry = await repository.createEntry(
-        dreamDate: DateTime(2026, 5, 18, 23, 45),
-        text: 'Walking through walls',
-        isLucid: true,
-      );
+    test(
+      'createEntry assigns id, day-normalized date and timestamps',
+      () async {
+        final entry = await repository.createEntry(
+          dreamDate: DateTime(2026, 5, 18, 23, 45),
+          text: 'Walking through walls',
+          isLucid: true,
+        );
 
-      expect(entry.id, isNotEmpty);
-      expect(entry.dreamDate, DateTime(2026, 5, 18).dayMillis);
-      expect(entry.body, 'Walking through walls');
-      expect(entry.isLucid, isTrue);
-      expect(entry.createdAt, fakeNow.millisecondsSinceEpoch);
-      expect(entry.updatedAt, entry.createdAt);
-      expect(entry.deletedAt, isNull);
-    });
+        expect(entry.id, isNotEmpty);
+        expect(entry.dreamDate, DateTime(2026, 5, 18).dayMillis);
+        expect(entry.body, 'Walking through walls');
+        expect(entry.isLucid, isTrue);
+        expect(entry.createdAt, fakeNow.millisecondsSinceEpoch);
+        expect(entry.updatedAt, entry.createdAt);
+        expect(entry.deletedAt, isNull);
+      },
+    );
 
     test('ids are unique across entries', () async {
       final a = await repository.createEntry(

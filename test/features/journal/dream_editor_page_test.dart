@@ -65,7 +65,10 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(await db.dreamEntryDao.getActive(), isEmpty);
-    expect(find.text('Write a few words about your dream first'), findsOneWidget);
+    expect(
+      find.text('Write a few words about your dream first'),
+      findsOneWidget,
+    );
 
     // Let the snackbar's display timer run out so none is left pending.
     await tester.pump(const Duration(seconds: 5));

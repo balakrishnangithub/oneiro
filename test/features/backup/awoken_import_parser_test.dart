@@ -64,7 +64,10 @@ void main() {
         ]),
       );
 
-      expect(result.entries.single.body, 'First paragraph.\n\nSecond paragraph.\n\n\nThird.');
+      expect(
+        result.entries.single.body,
+        'First paragraph.\n\nSecond paragraph.\n\n\nThird.',
+      );
     });
 
     test('a line of three dashes inside a body does not split the entry', () {
@@ -78,7 +81,10 @@ void main() {
       );
 
       expect(result.entries, hasLength(1));
-      expect(result.entries.single.body, 'Before the line\n---\nAfter the line');
+      expect(
+        result.entries.single.body,
+        'Before the line\n---\nAfter the line',
+      );
     });
 
     test('lines starting with spaces are body content', () {
@@ -126,8 +132,11 @@ void main() {
         final result = parser.parse(
           awokenFile([entryBlock(date: 'Sat 14 $month 2015', body: 'x')]),
         );
-        expect(result.entries.single.date, DateTime(2015, 9, 14),
-            reason: 'month spelling "$month"');
+        expect(
+          result.entries.single.date,
+          DateTime(2015, 9, 14),
+          reason: 'month spelling "$month"',
+        );
       }
     });
 

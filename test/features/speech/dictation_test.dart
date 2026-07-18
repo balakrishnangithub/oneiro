@@ -100,8 +100,9 @@ void main() {
     await unmountApp(tester);
   });
 
-  testWidgets('permission denial shows a friendly message and never starts',
-      (tester) async {
+  testWidgets('permission denial shows a friendly message and never starts', (
+    tester,
+  ) async {
     recognizer.available = false;
     await tester.pumpWidget(wrap());
     await tester.pumpAndSettle();
@@ -122,8 +123,9 @@ void main() {
     await unmountApp(tester);
   });
 
-  testWidgets('an engine-ended session resets the listening state',
-      (tester) async {
+  testWidgets('an engine-ended session resets the listening state', (
+    tester,
+  ) async {
     await tester.pumpWidget(wrap());
     await tester.pumpAndSettle();
 

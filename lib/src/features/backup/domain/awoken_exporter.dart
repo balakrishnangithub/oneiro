@@ -21,7 +21,15 @@ class AwokenExporter {
   static const String linkLine =
       'link: https://github.com/oneiro-dream-journal/oneiro';
 
-  static const _weekdayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  static const _weekdayNames = [
+    'Mon',
+    'Tue',
+    'Wed',
+    'Thu',
+    'Fri',
+    'Sat',
+    'Sun',
+  ];
   static const _monthNames = [
     'Jan',
     'Feb',

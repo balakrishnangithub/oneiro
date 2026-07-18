@@ -154,7 +154,9 @@ class _DreamEditorPageState extends ConsumerState<DreamEditorPage> {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
-          const SnackBar(content: Text('Write a few words about your dream first')),
+          const SnackBar(
+            content: Text('Write a few words about your dream first'),
+          ),
         );
       return;
     }

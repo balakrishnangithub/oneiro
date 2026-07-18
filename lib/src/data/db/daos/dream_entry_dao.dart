@@ -6,10 +6,8 @@ import '../tables.dart';
 part 'dream_entry_dao.g.dart';
 
 /// Escapes the SQL `LIKE` wildcards `%` and `_` in user input.
-String escapeLikePattern(String input) => input
-    .replaceAll(r'\', r'\\')
-    .replaceAll('%', r'\%')
-    .replaceAll('_', r'\_');
+String escapeLikePattern(String input) =>
+    input.replaceAll(r'\', r'\\').replaceAll('%', r'\%').replaceAll('_', r'\_');
 
 /// Data-access object for [DreamEntries].
 ///

@@ -69,8 +69,8 @@ class _PinLockPageState extends ConsumerState<PinLockPage>
 
   void _onDigit(int digit) {
     if (_controller.isCoolingDown) return;
-    final target = ref.read(appLockControllerProvider).pinLength ??
-        PinHasher.maxPinLength;
+    final target =
+        ref.read(appLockControllerProvider).pinLength ?? PinHasher.maxPinLength;
     if (_entered.length >= target) return;
     setState(() {
       _message = null;

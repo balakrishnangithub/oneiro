@@ -146,7 +146,9 @@ class _SyncSectionState extends ConsumerState<SyncSection> {
             ],
             selected: {backend},
             onSelectionChanged: (selection) {
-              final current = ref.read(syncConnectionSettingsProvider).valueOrNull;
+              final current = ref
+                  .read(syncConnectionSettingsProvider)
+                  .valueOrNull;
               if (current == null) return;
               ref
                   .read(syncSettingsRepositoryProvider)
@@ -254,9 +256,7 @@ class _SyncSectionState extends ConsumerState<SyncSection> {
             children: [
               if (!syncState.unlocked)
                 FilledButton.tonalIcon(
-                  onPressed: settings == null
-                      ? null
-                      : () => _unlock(settings),
+                  onPressed: settings == null ? null : () => _unlock(settings),
                   icon: const Icon(Icons.key_outlined),
                   label: const Text('Set / unlock'),
                 ),
@@ -284,7 +284,9 @@ class _SyncSectionState extends ConsumerState<SyncSection> {
       return 'Pick a long, unique passphrase you can remember — it cannot '
           'be recovered or reset.';
     }
-    if (passphrase.length < 8) return 'Strength: too short — aim for 12+ characters';
+    if (passphrase.length < 8) {
+      return 'Strength: too short — aim for 12+ characters';
+    }
     if (passphrase.length < 12) return 'Strength: fair — longer is better';
     if (passphrase.length < 16) return 'Strength: good';
     return 'Strength: excellent';

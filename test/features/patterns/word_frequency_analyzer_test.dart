@@ -17,24 +17,27 @@ void main() {
 
   group('tokenize', () {
     test('lowercases and splits on punctuation', () {
-      expect(
-        analyzer.tokenize('Flying past the Ocean, FLYING skyward!'),
-        {'flying', 'past', 'ocean', 'skyward'},
-      );
+      expect(analyzer.tokenize('Flying past the Ocean, FLYING skyward!'), {
+        'flying',
+        'past',
+        'ocean',
+        'skyward',
+      });
     });
 
     test('drops stopwords and short words', () {
-      expect(
-        analyzer.tokenize('I was in the dream and it felt so very odd'),
-        {'odd'},
-      );
+      expect(analyzer.tokenize('I was in the dream and it felt so very odd'), {
+        'odd',
+      });
     });
 
     test('keeps hashtags as first-class tokens with their hash', () {
-      expect(
-        analyzer.tokenize('Chased by dogs #nightmare #Nightmare #lucid'),
-        {'chased', 'dogs', '#nightmare', '#lucid'},
-      );
+      expect(analyzer.tokenize('Chased by dogs #nightmare #Nightmare #lucid'), {
+        'chased',
+        'dogs',
+        '#nightmare',
+        '#lucid',
+      });
     });
 
     test('hashtags bypass the stopword list', () {
@@ -46,17 +49,20 @@ void main() {
     });
 
     test('is Unicode-aware: Tamil words survive intact', () {
-      expect(
-        analyzer.tokenize('கனவில் பறந்தேன் மீண்டும் கனவில்'),
-        {'கனவில்', 'பறந்தேன்', 'மீண்டும்'},
-      );
+      expect(analyzer.tokenize('கனவில் பறந்தேன் மீண்டும் கனவில்'), {
+        'கனவில்',
+        'பறந்தேன்',
+        'மீண்டும்',
+      });
     });
 
     test('handles apostrophes, digits and emoji as separators', () {
-      expect(
-        analyzer.tokenize("don't run 2 fast 🌙 running"),
-        {'don', 'run', 'fast', 'running'},
-      );
+      expect(analyzer.tokenize("don't run 2 fast 🌙 running"), {
+        'don',
+        'run',
+        'fast',
+        'running',
+      });
     });
   });
 
@@ -67,17 +73,14 @@ void main() {
         'flying towards the ocean',
         'flying fish flying',
       ]);
-      expect(
-        result,
-        const [
-          WordFrequency('flying', 3),
-          WordFrequency('ocean', 3),
-          WordFrequency('crashing', 1),
-          WordFrequency('fish', 1),
-          WordFrequency('shore', 1),
-          WordFrequency('waves', 1),
-        ],
-      );
+      expect(result, const [
+        WordFrequency('flying', 3),
+        WordFrequency('ocean', 3),
+        WordFrequency('crashing', 1),
+        WordFrequency('fish', 1),
+        WordFrequency('shore', 1),
+        WordFrequency('waves', 1),
+      ]);
     });
 
     test('empty input yields an empty list', () {
@@ -87,10 +90,10 @@ void main() {
 
     test('hashtag and plain word are counted separately', () {
       final result = analyzer.analyze(['ocean #ocean ocean']);
-      expect(
-        result,
-        const [WordFrequency('ocean', 2), WordFrequency('#ocean', 1)],
-      );
+      expect(result, const [
+        WordFrequency('ocean', 2),
+        WordFrequency('#ocean', 1),
+      ]);
     });
   });
 
@@ -102,28 +105,22 @@ void main() {
     ];
 
     test('all dreams by default', () {
-      expect(
-        analyzer.analyzeEntries(entries),
-        const [
-          WordFrequency('flying', 2),
-          WordFrequency('deep', 1),
-          WordFrequency('drowning', 1),
-          WordFrequency('rooftops', 1),
-          WordFrequency('water', 1),
-          WordFrequency('whales', 1),
-        ],
-      );
+      expect(analyzer.analyzeEntries(entries), const [
+        WordFrequency('flying', 2),
+        WordFrequency('deep', 1),
+        WordFrequency('drowning', 1),
+        WordFrequency('rooftops', 1),
+        WordFrequency('water', 1),
+        WordFrequency('whales', 1),
+      ]);
     });
 
     test('lucidOnly restricts to lucid dreams', () {
-      expect(
-        analyzer.analyzeEntries(entries, lucidOnly: true),
-        const [
-          WordFrequency('flying', 2),
-          WordFrequency('rooftops', 1),
-          WordFrequency('whales', 1),
-        ],
-      );
+      expect(analyzer.analyzeEntries(entries, lucidOnly: true), const [
+        WordFrequency('flying', 2),
+        WordFrequency('rooftops', 1),
+        WordFrequency('whales', 1),
+      ]);
     });
   });
 }

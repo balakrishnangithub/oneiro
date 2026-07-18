@@ -74,7 +74,9 @@ class SyncedEntry {
     }
     final deletedAt = json['deletedAt'];
     if (deletedAt != null && deletedAt is! int) {
-      throw const FormatException('entry field "deletedAt" must be null or an integer');
+      throw const FormatException(
+        'entry field "deletedAt" must be null or an integer',
+      );
     }
     return SyncedEntry(
       id: id,

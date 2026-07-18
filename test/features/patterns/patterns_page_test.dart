@@ -59,8 +59,10 @@ void main() {
     await tester.pumpWidget(_wrap(db));
     await tester.pumpAndSettle();
 
-    expect(find.text('Write more dreams to reveal your patterns'),
-        findsOneWidget);
+    expect(
+      find.text('Write more dreams to reveal your patterns'),
+      findsOneWidget,
+    );
 
     await unmountApp(tester);
   });

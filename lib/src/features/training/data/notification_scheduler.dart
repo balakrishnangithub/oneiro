@@ -84,11 +84,7 @@ class NotificationScheduler {
       final random = Random(
         DailyPlanGenerator.seedForDate(date, salt: DailyPlanGenerator.daySalt),
       );
-      for (final at in _planGenerator.generateDayPlan(
-        settings,
-        date,
-        random,
-      )) {
+      for (final at in _planGenerator.generateDayPlan(settings, date, random)) {
         if (!at.isAfter(now)) continue;
         planned.add(
           _gateway.scheduleOnce(
@@ -128,7 +124,8 @@ class NotificationScheduler {
             id: idFor(TrainingNotificationKind.dreamClue, at),
             at: at,
             title: 'Dream clue',
-            body: 'A quiet cue from Oneiro — hearing this may mean you are '
+            body:
+                'A quiet cue from Oneiro — hearing this may mean you are '
                 'dreaming. Do a reality check.',
             payload: TrainingPayloads.dreamClue,
             playSound: false,

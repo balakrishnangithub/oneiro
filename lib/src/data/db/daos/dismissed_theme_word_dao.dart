@@ -15,14 +15,13 @@ class DismissedThemeWordDao extends DatabaseAccessor<OneiroDatabase>
   DismissedThemeWordDao(super.db);
 
   /// Live set of dismissed (lowercased) words.
-  Stream<Set<String>> watchDismissed() => select(dismissedThemeWords).watch()
-      .map((rows) => rows.map((row) => row.word).toSet());
+  Stream<Set<String>> watchDismissed() => select(
+    dismissedThemeWords,
+  ).watch().map((rows) => rows.map((row) => row.word).toSet());
 
   /// One-shot variant of [watchDismissed].
   Future<Set<String>> getDismissed() async =>
-      (await select(dismissedThemeWords).get())
-          .map((row) => row.word)
-          .toSet();
+      (await select(dismissedThemeWords).get()).map((row) => row.word).toSet();
 
   /// Remembers [word] as dismissed at [dismissedAtMs]. Idempotent.
   Future<void> dismiss(String word, int dismissedAtMs) =>

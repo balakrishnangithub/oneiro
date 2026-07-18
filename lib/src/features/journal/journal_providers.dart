@@ -4,8 +4,9 @@ import '../../data/db/oneiro_database.dart';
 import '../../data/providers.dart';
 
 /// Current text typed into the journal search field.
-final journalSearchQueryProvider =
-    NotifierProvider<JournalSearchQuery, String>(JournalSearchQuery.new);
+final journalSearchQueryProvider = NotifierProvider<JournalSearchQuery, String>(
+  JournalSearchQuery.new,
+);
 
 class JournalSearchQuery extends Notifier<String> {
   @override

@@ -45,9 +45,7 @@ void main() {
 
   group('round trip', () {
     test('saved settings survive a reload, including the pause', () async {
-      final pausedUntil = DateTime.fromMillisecondsSinceEpoch(
-        1798765432000,
-      );
+      final pausedUntil = DateTime.fromMillisecondsSinceEpoch(1798765432000);
       final custom = TrainingSettings(
         realityChecksEnabled: false,
         checksPerDay: 7,

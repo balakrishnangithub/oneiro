@@ -56,7 +56,11 @@ class SettingsPage extends ConsumerWidget {
 
 /// Card with a section title, used by every settings group.
 class SettingsSectionCard extends StatelessWidget {
-  const SettingsSectionCard({super.key, required this.title, required this.children});
+  const SettingsSectionCard({
+    super.key,
+    required this.title,
+    required this.children,
+  });
 
   final String title;
   final List<Widget> children;
@@ -263,9 +267,7 @@ class _DreamClueSection extends _SettingsSection {
           ),
         ),
         ListTile(
-          title: Text(
-            'Volume ${(settings.clueVolume * 100).round()}%',
-          ),
+          title: Text('Volume ${(settings.clueVolume * 100).round()}%'),
           subtitle: Slider(
             value: settings.clueVolume,
             min: 0,

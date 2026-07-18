@@ -22,8 +22,7 @@ void main() {
       expect(PinHasher.verify('abcd', stored), isFalse);
     });
 
-    test('salt uniqueness: two hashes of the same PIN differ, both verify',
-        () {
+    test('salt uniqueness: two hashes of the same PIN differ, both verify', () {
       final first = PinHasher.hash('880123');
       final second = PinHasher.hash('880123');
       expect(first, isNot(second));
@@ -56,10 +55,7 @@ void main() {
       expect(() => PinHasher.hash('12 4'), throwsArgumentError);
       // Boundary lengths are fine.
       expect(PinHasher.verify('0000', PinHasher.hash('0000')), isTrue);
-      expect(
-        PinHasher.verify('12345678', PinHasher.hash('12345678')),
-        isTrue,
-      );
+      expect(PinHasher.verify('12345678', PinHasher.hash('12345678')), isTrue);
     });
 
     test('isValidPin encodes the 4–8 digit rule', () {
@@ -101,8 +97,10 @@ void main() {
 
     test('null on malformed strings', () {
       expect(PinHasher.storedPinLength(''), isNull);
-      expect(PinHasher.storedPinLength('opin1\$16384\$8\$1\$99\$AA\$AA'),
-          isNull);
+      expect(
+        PinHasher.storedPinLength('opin1\$16384\$8\$1\$99\$AA\$AA'),
+        isNull,
+      );
     });
   });
 }

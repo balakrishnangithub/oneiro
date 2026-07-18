@@ -39,8 +39,7 @@ class FakeSettingsRepository implements SettingsRepository {
   Future<void> save(TrainingSettings settings) async {}
 
   @override
-  Stream<TrainingSettings> watch() =>
-      Stream.value(const TrainingSettings());
+  Stream<TrainingSettings> watch() => Stream.value(const TrainingSettings());
 }
 
 Widget _wrap(OneiroDatabase db, {required DateTime today}) {

@@ -11,8 +11,11 @@ void main() {
   late DriftDreamRepository repository;
   late AwokenImportService service;
 
-  AwokenImportedEntry parsed(DateTime date, String body, {bool lucid = false}) =>
-      AwokenImportedEntry(date: date, isLucid: lucid, body: body);
+  AwokenImportedEntry parsed(
+    DateTime date,
+    String body, {
+    bool lucid = false,
+  }) => AwokenImportedEntry(date: date, isLucid: lucid, body: body);
 
   setUp(() {
     db = createTestDatabase();
@@ -105,10 +108,10 @@ void main() {
 
     test('progress callback reports processed counts', () async {
       final calls = <(int, int)>[];
-      await service.importEntries(
-        [parsed(DateTime(2026, 5, 18), 'a'), parsed(DateTime(2026, 5, 17), 'b')],
-        onProgress: (done, total) => calls.add((done, total)),
-      );
+      await service.importEntries([
+        parsed(DateTime(2026, 5, 18), 'a'),
+        parsed(DateTime(2026, 5, 17), 'b'),
+      ], onProgress: (done, total) => calls.add((done, total)));
 
       expect(calls, [(1, 2), (2, 2)]);
     });

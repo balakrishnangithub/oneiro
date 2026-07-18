@@ -11,9 +11,8 @@ void main() {
   NotificationScheduler makeScheduler() =>
       NotificationScheduler(gateway: gateway, clock: () => now);
 
-  List<ScheduledNotification> oneShots(String payload) => gateway.scheduled
-      .where((n) => !n.daily && n.payload == payload)
-      .toList();
+  List<ScheduledNotification> oneShots(String payload) =>
+      gateway.scheduled.where((n) => !n.daily && n.payload == payload).toList();
 
   setUp(() => gateway = FakeNotificationGateway());
 
@@ -24,30 +23,33 @@ void main() {
     expect(gateway.cancelCount, 1);
   });
 
-  test('schedules reality checks for today and tomorrow in the future', () async {
-    await makeScheduler().replan(const TrainingSettings());
+  test(
+    'schedules reality checks for today and tomorrow in the future',
+    () async {
+      await makeScheduler().replan(const TrainingSettings());
 
-    final checks = oneShots(TrainingPayloads.realityCheck);
-    final tomorrow = DateTime(2026, 5, 19);
-    final tomorrowChecks = checks
-        .where(
-          (n) =>
-              n.at!.year == tomorrow.year &&
-              n.at!.month == tomorrow.month &&
-              n.at!.day == tomorrow.day,
-        )
-        .toList();
+      final checks = oneShots(TrainingPayloads.realityCheck);
+      final tomorrow = DateTime(2026, 5, 19);
+      final tomorrowChecks = checks
+          .where(
+            (n) =>
+                n.at!.year == tomorrow.year &&
+                n.at!.month == tomorrow.month &&
+                n.at!.day == tomorrow.day,
+          )
+          .toList();
 
-    // All three of tomorrow's checks are scheduled; today's past ones are
-    // dropped.
-    expect(tomorrowChecks, hasLength(3));
-    for (final n in checks) {
-      expect(n.at!.isAfter(now), isTrue, reason: '${n.at} not in the future');
-      expect(n.at!.hour, greaterThanOrEqualTo(8));
-      expect(n.at!.hour, lessThan(22));
-      expect(n.playSound, isTrue);
-    }
-  });
+      // All three of tomorrow's checks are scheduled; today's past ones are
+      // dropped.
+      expect(tomorrowChecks, hasLength(3));
+      for (final n in checks) {
+        expect(n.at!.isAfter(now), isTrue, reason: '${n.at} not in the future');
+        expect(n.at!.hour, greaterThanOrEqualTo(8));
+        expect(n.at!.hour, lessThan(22));
+        expect(n.playSound, isTrue);
+      }
+    },
+  );
 
   test('re-planning is idempotent: same settings yield the same ids', () async {
     const settings = TrainingSettings(dreamCluesEnabled: true);
@@ -71,7 +73,9 @@ void main() {
     );
     expect(
       NotificationScheduler.idFor(TrainingNotificationKind.realityCheck, at),
-      isNot(NotificationScheduler.idFor(TrainingNotificationKind.dreamClue, at)),
+      isNot(
+        NotificationScheduler.idFor(TrainingNotificationKind.dreamClue, at),
+      ),
     );
   });
 
@@ -118,31 +122,33 @@ void main() {
     }
   });
 
-  test('night window crossing midnight schedules across the boundary',
-      () async {
-    const settings = TrainingSettings(
-      dreamCluesEnabled: true,
-      cluesPerNight: 4,
-      nightStartMinutes: 23 * 60,
-      nightEndMinutes: 6 * 60,
-    );
-    await makeScheduler().replan(settings);
+  test(
+    'night window crossing midnight schedules across the boundary',
+    () async {
+      const settings = TrainingSettings(
+        dreamCluesEnabled: true,
+        cluesPerNight: 4,
+        nightStartMinutes: 23 * 60,
+        nightEndMinutes: 6 * 60,
+      );
+      await makeScheduler().replan(settings);
 
-    final clues = oneShots(TrainingPayloads.dreamClue);
-    // Tonight (18th 23:00 → 19th 06:00) plus tomorrow night (19th 23:00 →
-    // 20th 06:00); yesterday's anchored window is entirely in the past.
-    expect(clues, hasLength(8));
-    for (final n in clues) {
-      expect(n.at!.isAfter(now), isTrue);
-      final inTonight =
-          !n.at!.isBefore(DateTime(2026, 5, 18, 23)) &&
-          !n.at!.isAfter(DateTime(2026, 5, 19, 6));
-      final inTomorrowNight =
-          !n.at!.isBefore(DateTime(2026, 5, 19, 23)) &&
-          !n.at!.isAfter(DateTime(2026, 5, 20, 6));
-      expect(inTonight || inTomorrowNight, isTrue, reason: '${n.at} outside');
-    }
-  });
+      final clues = oneShots(TrainingPayloads.dreamClue);
+      // Tonight (18th 23:00 → 19th 06:00) plus tomorrow night (19th 23:00 →
+      // 20th 06:00); yesterday's anchored window is entirely in the past.
+      expect(clues, hasLength(8));
+      for (final n in clues) {
+        expect(n.at!.isAfter(now), isTrue);
+        final inTonight =
+            !n.at!.isBefore(DateTime(2026, 5, 18, 23)) &&
+            !n.at!.isAfter(DateTime(2026, 5, 19, 6));
+        final inTomorrowNight =
+            !n.at!.isBefore(DateTime(2026, 5, 19, 23)) &&
+            !n.at!.isAfter(DateTime(2026, 5, 20, 6));
+        expect(inTonight || inTomorrowNight, isTrue, reason: '${n.at} outside');
+      }
+    },
+  );
 
   test('morning reminder can be turned off', () async {
     const settings = TrainingSettings(morningReminderEnabled: false);

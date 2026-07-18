@@ -62,10 +62,7 @@ void main() {
 
     test('separator precedes every entry including the first', () {
       final text = exporter.export(sampleEntries);
-      final separators = RegExp(
-        r'^----$',
-        multiLine: true,
-      ).allMatches(text);
+      final separators = RegExp(r'^----$', multiLine: true).allMatches(text);
 
       expect(separators, hasLength(sampleEntries.length));
     });
@@ -82,10 +79,7 @@ void main() {
 
       expect(text, contains('Date: Mon 14 Sep 2015'));
       // And the parser accepts what we emit.
-      expect(
-        parser.parse(text).entries.single.date,
-        DateTime(2015, 9, 14),
-      );
+      expect(parser.parse(text).entries.single.date, DateTime(2015, 9, 14));
     });
 
     test('zero-pads single-digit days', () {

@@ -38,10 +38,7 @@ void main() {
       expect(result.firstDate, DateTime(2015, 11, 14));
 
       // Every entry has a non-empty body.
-      expect(
-        result.entries.where((e) => e.body.trim().isEmpty),
-        isEmpty,
-      );
+      expect(result.entries.where((e) => e.body.trim().isEmpty), isEmpty);
     },
     skip: available
         ? false

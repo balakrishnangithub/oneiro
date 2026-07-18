@@ -118,9 +118,7 @@ void main() {
     });
 
     test('future-dated entries are excluded from the windows', () {
-      final stats = JournalStats.compute([
-        entry(2026, 5, 20),
-      ], today: today);
+      final stats = JournalStats.compute([entry(2026, 5, 20)], today: today);
       expect(stats.entriesLast7Days, 0);
       expect(stats.entriesLast30Days, 0);
       expect(stats.totalEntries, 1);
@@ -151,13 +149,17 @@ void main() {
     });
 
     test('entries land in their week, current week included', () {
-      final buckets = weeklyActivity([
-        entry(2026, 5, 18), // this Monday
-        entry(2026, 5, 17), // Sunday: previous week
-        entry(2026, 5, 11), // previous Monday
-        entry(2026, 3, 30), // first bucket
-        entry(2026, 3, 29), // before the window: dropped
-      ], today: today, weeks: 8);
+      final buckets = weeklyActivity(
+        [
+          entry(2026, 5, 18), // this Monday
+          entry(2026, 5, 17), // Sunday: previous week
+          entry(2026, 5, 11), // previous Monday
+          entry(2026, 3, 30), // first bucket
+          entry(2026, 3, 29), // before the window: dropped
+        ],
+        today: today,
+        weeks: 8,
+      );
       expect(buckets.map((b) => b.count).toList(), [1, 0, 0, 0, 0, 0, 2, 1]);
     });
   });

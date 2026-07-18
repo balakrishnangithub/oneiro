@@ -26,8 +26,7 @@ class PinRepository {
   }
 
   /// Sets (or replaces) the PIN. Throws [ArgumentError] on an invalid PIN.
-  Future<void> setPin(String pin) =>
-      _store.write(hashKey, PinHasher.hash(pin));
+  Future<void> setPin(String pin) => _store.write(hashKey, PinHasher.hash(pin));
 
   /// Returns true when [pin] matches the stored hash. False when no PIN is
   /// set or the stored value is malformed.

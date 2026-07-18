@@ -16,9 +16,9 @@ abstract final class AppTheme {
       seedColor: seedColor,
       brightness: Brightness.light,
     );
-    return _base(scheme).copyWith(
-      scaffoldBackgroundColor: const Color(0xFFF6F6FB),
-    );
+    return _base(
+      scheme,
+    ).copyWith(scaffoldBackgroundColor: const Color(0xFFF6F6FB));
   }
 
   static ThemeData dark() {
@@ -33,9 +33,9 @@ abstract final class AppTheme {
           surfaceContainer: const Color(0xFF1B1E33),
           surfaceContainerHigh: const Color(0xFF22263E),
         );
-    return _base(scheme).copyWith(
-      scaffoldBackgroundColor: const Color(0xFF0F1120),
-    );
+    return _base(
+      scheme,
+    ).copyWith(scaffoldBackgroundColor: const Color(0xFF0F1120));
   }
 
   static ThemeData _base(ColorScheme scheme) {
@@ -50,7 +50,9 @@ abstract final class AppTheme {
       inputDecorationTheme: const InputDecorationTheme(
         border: OutlineInputBorder(),
       ),
-      snackBarTheme: const SnackBarThemeData(behavior: SnackBarBehavior.floating),
+      snackBarTheme: const SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+      ),
     );
   }
 }

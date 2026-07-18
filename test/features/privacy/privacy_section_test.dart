@@ -32,8 +32,9 @@ void main() {
   Future<void> drainSnackbars(WidgetTester tester) =>
       tester.pump(const Duration(seconds: 5));
 
-  testWidgets('enable flow: enter → confirm stores only a salted hash',
-      (tester) async {
+  testWidgets('enable flow: enter → confirm stores only a salted hash', (
+    tester,
+  ) async {
     await pumpSection(tester);
     expect(find.text('Privacy'), findsOneWidget);
     expect(find.text('Journal opens freely'), findsOneWidget);
@@ -46,8 +47,10 @@ void main() {
     // Continue stays disabled until the input is a valid 4–8 digit PIN.
     await tester.enterText(find.byType(TextField), '12');
     await tester.pump();
-    expect(tester.widget<FilledButton>(find.byType(FilledButton)).enabled,
-        isFalse);
+    expect(
+      tester.widget<FilledButton>(find.byType(FilledButton)).enabled,
+      isFalse,
+    );
     await tester.enterText(find.byType(TextField), '4471');
     await tester.pump();
     await tester.tap(find.text('Continue'));
@@ -111,10 +114,7 @@ void main() {
     await tester.pump();
     await tester.tap(find.text('Continue'));
     await tester.pumpAndSettle();
-    expect(
-      find.text('Incorrect PIN — PIN lock stays on'),
-      findsOneWidget,
-    );
+    expect(find.text('Incorrect PIN — PIN lock stays on'), findsOneWidget);
     expect(await pinRepository.isEnabled(), isTrue);
     await drainSnackbars(tester);
 
@@ -133,8 +133,9 @@ void main() {
     await unmountApp(tester);
   });
 
-  testWidgets('change PIN verifies current, then replaces the hash',
-      (tester) async {
+  testWidgets('change PIN verifies current, then replaces the hash', (
+    tester,
+  ) async {
     await pinRepository.setPin('4471');
     await pumpSection(tester);
 
