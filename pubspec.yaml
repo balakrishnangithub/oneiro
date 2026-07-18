@@ -24,6 +24,10 @@ dependencies:
   collection: ^1.19.0
   # Navigation
   go_router: ^14.6.2
+  flutter_local_notifications: ^20.1.0
+  audioplayers: ^6.6.0
+  timezone: ^0.10.1
+  flutter_timezone: ^4.1.0
 
 dev_dependencies:
   flutter_test:
@@ -34,3 +38,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/audio/
