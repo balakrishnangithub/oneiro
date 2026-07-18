@@ -36,6 +36,7 @@ dependencies:
   cryptography: ^2.9.0
   pointycastle: ^4.0.0
   webdav_client: ^1.2.2
+  dio: ^5.10.0
   flutter_secure_storage: ^10.0.0
 
 dev_dependencies:
