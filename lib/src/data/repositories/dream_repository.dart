@@ -12,6 +12,9 @@ import '../db/oneiro_database.dart';
 /// touching the UI.
 abstract class DreamRepository {
   Stream<List<DreamEntry>> watchEntries({String query = ''});
+
+  /// One-shot read of every live entry (used by backup export/import).
+  Future<List<DreamEntry>> getAllActive();
   Future<DreamEntry?> getById(String id);
   Future<DreamEntry> createEntry({
     required DateTime dreamDate,
@@ -38,6 +41,9 @@ class DriftDreamRepository implements DreamRepository {
   @override
   Stream<List<DreamEntry>> watchEntries({String query = ''}) =>
       _dao.watchActive(query: query);
+
+  @override
+  Future<List<DreamEntry>> getAllActive() => _dao.getActive();
 
   @override
   Future<DreamEntry?> getById(String id) => _dao.getById(id);
