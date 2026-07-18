@@ -9,6 +9,8 @@ Outputs:
   assets/icon/app_icon.png             1024x1024, full-bleed night field
   assets/icon/app_icon_foreground.png  1024x1024, transparent, padded motif
                                        (adaptive-icon foreground layer)
+  assets/icon/app_icon_monochrome.png  1024x1024, white motif on transparent
+                                       (Android 13+ themed-icon layer)
 
 Run from the repo root:  python tools/generate_launcher_icon.py
 """
@@ -42,17 +44,14 @@ def draw_moon(draw: ImageDraw.ImageDraw, cx: float, cy: float, r: float) -> None
     draw.ellipse([bx - bite_r, by - bite_r, bx + bite_r, by + bite_r], fill=NIGHT)
 
 
-def draw_star(draw: ImageDraw.ImageDraw, cx: float, cy: float, r: float) -> None:
+def draw_star_colored(draw: ImageDraw.ImageDraw, cx: float, cy: float,
+                      r: float, color) -> None:
     """Four-point sparkle star (two overlapping slim diamonds)."""
-    w = r * 0.22
-    draw.polygon(
-        [(cx, cy - r), (cx + w, cy - w), (cx + r, cy), (cx + w, cy + w),
-         (cx, cy + r), (cx - w, cy + w), (cx - r, cy), (cx - w, cy - w)],
-        fill=STAR,
-    )
 
 
-def compose(transparent: bool) -> Image.Image:
+def compose(transparent: bool, mono: bool = False) -> Image.Image:
+    moon_color = (255, 255, 255, 255) if mono else MOON
+    star_color = (255, 255, 255, 255) if mono else STAR
     img = Image.new("RGBA", (S, S), (0, 0, 0, 0) if transparent else NIGHT)
     draw = ImageDraw.Draw(img)
 
@@ -75,7 +74,7 @@ def compose(transparent: bool) -> Image.Image:
         md.ellipse(
             [moon_cx - moon_r, moon_cy - moon_r,
              moon_cx + moon_r, moon_cy + moon_r],
-            fill=MOON,
+            fill=moon_color,
         )
         bite_r = moon_r * 0.86
         bx = moon_cx + moon_r * 0.52
@@ -88,19 +87,32 @@ def compose(transparent: bool) -> Image.Image:
 
     # Sparkle star resting in the crescent's opening.
     star_r = S * 0.075 / pad
-    draw_star(draw, S * 0.62, S * 0.36, star_r)
+    draw_star_colored(draw, S * 0.62, S * 0.36, star_r, star_color)
     # A tiny companion star, lower left of the moon.
-    draw_star(draw, S * 0.30, S * 0.33, star_r * 0.45)
+    draw_star_colored(draw, S * 0.30, S * 0.33, star_r * 0.45, star_color)
 
     return img.resize((SIZE, SIZE), Image.LANCZOS)
+
+
+def draw_star_colored(draw: ImageDraw.ImageDraw, cx: float, cy: float,
+                      r: float, color) -> None:
+    """Four-point sparkle star (two overlapping slim diamonds)."""
+    w = r * 0.22
+    draw.polygon(
+        [(cx, cy - r), (cx + w, cy - w), (cx + r, cy), (cx + w, cy + w),
+         (cx, cy + r), (cx - w, cy + w), (cx - r, cy), (cx - w, cy - w)],
+        fill=color,
+    )
 
 
 def main() -> None:
     OUT.mkdir(parents=True, exist_ok=True)
     compose(transparent=False).save(OUT / "app_icon.png")
     compose(transparent=True).save(OUT / "app_icon_foreground.png")
+    compose(transparent=True, mono=True).save(OUT / "app_icon_monochrome.png")
     print(f"wrote {OUT / 'app_icon.png'}")
     print(f"wrote {OUT / 'app_icon_foreground.png'}")
+    print(f"wrote {OUT / 'app_icon_monochrome.png'}")
 
 
 if __name__ == "__main__":
