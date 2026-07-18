@@ -119,40 +119,46 @@ class _JournalList extends StatelessWidget {
     return CustomScrollView(
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
       slivers: [
-        for (final MapEntry(key: day, value: dayEntries) in groups.entries) ...[
-          PinnedHeaderSliver(child: DateGroupHeader(date: day)),
-          SliverList.builder(
-            itemCount: dayEntries.length,
-            itemBuilder: (context, index) {
-              final entry = dayEntries[index];
-              return Dismissible(
-                key: ValueKey(entry.id),
-                direction: DismissDirection.endToStart,
-                onDismissed: (_) => onDelete(entry),
-                background: Container(
-                  alignment: Alignment.centerRight,
-                  margin: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 4,
-                  ),
-                  padding: const EdgeInsets.only(right: 24),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.errorContainer,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(
-                    Icons.delete_outline,
-                    color: Theme.of(context).colorScheme.onErrorContainer,
-                  ),
-                ),
-                child: DreamEntryTile(
-                  entry: entry,
-                  onTap: () => context.push(AppRoutes.editDream(entry.id)),
-                ),
-              );
-            },
+        // Each day group must be wrapped in a SliverMainAxisGroup: bare
+        // PinnedHeaderSlivers stack on top of each other instead of the
+        // incoming header pushing the previous one away.
+        for (final MapEntry(key: day, value: dayEntries) in groups.entries)
+          SliverMainAxisGroup(
+            slivers: [
+              PinnedHeaderSliver(child: DateGroupHeader(date: day)),
+              SliverList.builder(
+                itemCount: dayEntries.length,
+                itemBuilder: (context, index) {
+                  final entry = dayEntries[index];
+                  return Dismissible(
+                    key: ValueKey(entry.id),
+                    direction: DismissDirection.endToStart,
+                    onDismissed: (_) => onDelete(entry),
+                    background: Container(
+                      alignment: Alignment.centerRight,
+                      margin: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
+                      padding: const EdgeInsets.only(right: 24),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.errorContainer,
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        Icons.delete_outline,
+                        color: Theme.of(context).colorScheme.onErrorContainer,
+                      ),
+                    ),
+                    child: DreamEntryTile(
+                      entry: entry,
+                      onTap: () => context.push(AppRoutes.editDream(entry.id)),
+                    ),
+                  );
+                },
+              ),
+            ],
           ),
-        ],
         // Keep the last entry clear of the FAB.
         const SliverToBoxAdapter(child: SizedBox(height: 88)),
       ],
