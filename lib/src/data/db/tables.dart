@@ -45,3 +45,18 @@ class AppSettings extends Table {
   @override
   Set<Column<Object>> get primaryKey => {key};
 }
+
+/// A theme word the user banished from the dream-patterns list.
+///
+/// Dismissed words are remembered forever (until restored), so the patterns
+/// page never surfaces them again.
+class DismissedThemeWords extends Table {
+  /// The lowercased token, e.g. `flying` or `#ocean`.
+  TextColumn get word => text()();
+
+  /// When the word was dismissed, millis since epoch.
+  IntColumn get dismissedAt => integer()();
+
+  @override
+  Set<Column<Object>> get primaryKey => {word};
+}

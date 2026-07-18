@@ -691,14 +691,243 @@ class AppSettingsCompanion extends UpdateCompanion<AppSetting> {
   }
 }
 
+class $DismissedThemeWordsTable extends DismissedThemeWords
+    with TableInfo<$DismissedThemeWordsTable, DismissedThemeWord> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $DismissedThemeWordsTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _wordMeta = const VerificationMeta('word');
+  @override
+  late final GeneratedColumn<String> word = GeneratedColumn<String>(
+    'word',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _dismissedAtMeta = const VerificationMeta(
+    'dismissedAt',
+  );
+  @override
+  late final GeneratedColumn<int> dismissedAt = GeneratedColumn<int>(
+    'dismissed_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.int,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [word, dismissedAt];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'dismissed_theme_words';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<DismissedThemeWord> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('word')) {
+      context.handle(
+        _wordMeta,
+        word.isAcceptableOrUnknown(data['word']!, _wordMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_wordMeta);
+    }
+    if (data.containsKey('dismissed_at')) {
+      context.handle(
+        _dismissedAtMeta,
+        dismissedAt.isAcceptableOrUnknown(
+          data['dismissed_at']!,
+          _dismissedAtMeta,
+        ),
+      );
+    } else if (isInserting) {
+      context.missing(_dismissedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {word};
+  @override
+  DismissedThemeWord map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return DismissedThemeWord(
+      word: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}word'],
+      )!,
+      dismissedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.int,
+        data['${effectivePrefix}dismissed_at'],
+      )!,
+    );
+  }
+
+  @override
+  $DismissedThemeWordsTable createAlias(String alias) {
+    return $DismissedThemeWordsTable(attachedDatabase, alias);
+  }
+}
+
+class DismissedThemeWord extends DataClass
+    implements Insertable<DismissedThemeWord> {
+  /// The lowercased token, e.g. `flying` or `#ocean`.
+  final String word;
+
+  /// When the word was dismissed, millis since epoch.
+  final int dismissedAt;
+  const DismissedThemeWord({required this.word, required this.dismissedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['word'] = Variable<String>(word);
+    map['dismissed_at'] = Variable<int>(dismissedAt);
+    return map;
+  }
+
+  DismissedThemeWordsCompanion toCompanion(bool nullToAbsent) {
+    return DismissedThemeWordsCompanion(
+      word: Value(word),
+      dismissedAt: Value(dismissedAt),
+    );
+  }
+
+  factory DismissedThemeWord.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return DismissedThemeWord(
+      word: serializer.fromJson<String>(json['word']),
+      dismissedAt: serializer.fromJson<int>(json['dismissedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'word': serializer.toJson<String>(word),
+      'dismissedAt': serializer.toJson<int>(dismissedAt),
+    };
+  }
+
+  DismissedThemeWord copyWith({String? word, int? dismissedAt}) =>
+      DismissedThemeWord(
+        word: word ?? this.word,
+        dismissedAt: dismissedAt ?? this.dismissedAt,
+      );
+  DismissedThemeWord copyWithCompanion(DismissedThemeWordsCompanion data) {
+    return DismissedThemeWord(
+      word: data.word.present ? data.word.value : this.word,
+      dismissedAt: data.dismissedAt.present
+          ? data.dismissedAt.value
+          : this.dismissedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DismissedThemeWord(')
+          ..write('word: $word, ')
+          ..write('dismissedAt: $dismissedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(word, dismissedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is DismissedThemeWord &&
+          other.word == this.word &&
+          other.dismissedAt == this.dismissedAt);
+}
+
+class DismissedThemeWordsCompanion extends UpdateCompanion<DismissedThemeWord> {
+  final Value<String> word;
+  final Value<int> dismissedAt;
+  final Value<int> rowid;
+  const DismissedThemeWordsCompanion({
+    this.word = const Value.absent(),
+    this.dismissedAt = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  DismissedThemeWordsCompanion.insert({
+    required String word,
+    required int dismissedAt,
+    this.rowid = const Value.absent(),
+  }) : word = Value(word),
+       dismissedAt = Value(dismissedAt);
+  static Insertable<DismissedThemeWord> custom({
+    Expression<String>? word,
+    Expression<int>? dismissedAt,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (word != null) 'word': word,
+      if (dismissedAt != null) 'dismissed_at': dismissedAt,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  DismissedThemeWordsCompanion copyWith({
+    Value<String>? word,
+    Value<int>? dismissedAt,
+    Value<int>? rowid,
+  }) {
+    return DismissedThemeWordsCompanion(
+      word: word ?? this.word,
+      dismissedAt: dismissedAt ?? this.dismissedAt,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (word.present) {
+      map['word'] = Variable<String>(word.value);
+    }
+    if (dismissedAt.present) {
+      map['dismissed_at'] = Variable<int>(dismissedAt.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('DismissedThemeWordsCompanion(')
+          ..write('word: $word, ')
+          ..write('dismissedAt: $dismissedAt, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
 abstract class _$OneiroDatabase extends GeneratedDatabase {
   _$OneiroDatabase(QueryExecutor e) : super(e);
   $OneiroDatabaseManager get managers => $OneiroDatabaseManager(this);
   late final $DreamEntriesTable dreamEntries = $DreamEntriesTable(this);
   late final $AppSettingsTable appSettings = $AppSettingsTable(this);
+  late final $DismissedThemeWordsTable dismissedThemeWords =
+      $DismissedThemeWordsTable(this);
   late final DreamEntryDao dreamEntryDao = DreamEntryDao(
     this as OneiroDatabase,
   );
+  late final DismissedThemeWordDao dismissedThemeWordDao =
+      DismissedThemeWordDao(this as OneiroDatabase);
   @override
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
@@ -706,6 +935,7 @@ abstract class _$OneiroDatabase extends GeneratedDatabase {
   List<DatabaseSchemaEntity> get allSchemaEntities => [
     dreamEntries,
     appSettings,
+    dismissedThemeWords,
   ];
 }
 
@@ -1086,6 +1316,167 @@ typedef $$AppSettingsTableProcessedTableManager =
       AppSetting,
       PrefetchHooks Function()
     >;
+typedef $$DismissedThemeWordsTableCreateCompanionBuilder =
+    DismissedThemeWordsCompanion Function({
+      required String word,
+      required int dismissedAt,
+      Value<int> rowid,
+    });
+typedef $$DismissedThemeWordsTableUpdateCompanionBuilder =
+    DismissedThemeWordsCompanion Function({
+      Value<String> word,
+      Value<int> dismissedAt,
+      Value<int> rowid,
+    });
+
+class $$DismissedThemeWordsTableFilterComposer
+    extends Composer<_$OneiroDatabase, $DismissedThemeWordsTable> {
+  $$DismissedThemeWordsTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get word => $composableBuilder(
+    column: $table.word,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<int> get dismissedAt => $composableBuilder(
+    column: $table.dismissedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$DismissedThemeWordsTableOrderingComposer
+    extends Composer<_$OneiroDatabase, $DismissedThemeWordsTable> {
+  $$DismissedThemeWordsTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get word => $composableBuilder(
+    column: $table.word,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<int> get dismissedAt => $composableBuilder(
+    column: $table.dismissedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$DismissedThemeWordsTableAnnotationComposer
+    extends Composer<_$OneiroDatabase, $DismissedThemeWordsTable> {
+  $$DismissedThemeWordsTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get word =>
+      $composableBuilder(column: $table.word, builder: (column) => column);
+
+  GeneratedColumn<int> get dismissedAt => $composableBuilder(
+    column: $table.dismissedAt,
+    builder: (column) => column,
+  );
+}
+
+class $$DismissedThemeWordsTableTableManager
+    extends
+        RootTableManager<
+          _$OneiroDatabase,
+          $DismissedThemeWordsTable,
+          DismissedThemeWord,
+          $$DismissedThemeWordsTableFilterComposer,
+          $$DismissedThemeWordsTableOrderingComposer,
+          $$DismissedThemeWordsTableAnnotationComposer,
+          $$DismissedThemeWordsTableCreateCompanionBuilder,
+          $$DismissedThemeWordsTableUpdateCompanionBuilder,
+          (
+            DismissedThemeWord,
+            BaseReferences<
+              _$OneiroDatabase,
+              $DismissedThemeWordsTable,
+              DismissedThemeWord
+            >,
+          ),
+          DismissedThemeWord,
+          PrefetchHooks Function()
+        > {
+  $$DismissedThemeWordsTableTableManager(
+    _$OneiroDatabase db,
+    $DismissedThemeWordsTable table,
+  ) : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$DismissedThemeWordsTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$DismissedThemeWordsTableOrderingComposer(
+                $db: db,
+                $table: table,
+              ),
+          createComputedFieldComposer: () =>
+              $$DismissedThemeWordsTableAnnotationComposer(
+                $db: db,
+                $table: table,
+              ),
+          updateCompanionCallback:
+              ({
+                Value<String> word = const Value.absent(),
+                Value<int> dismissedAt = const Value.absent(),
+                Value<int> rowid = const Value.absent(),
+              }) => DismissedThemeWordsCompanion(
+                word: word,
+                dismissedAt: dismissedAt,
+                rowid: rowid,
+              ),
+          createCompanionCallback:
+              ({
+                required String word,
+                required int dismissedAt,
+                Value<int> rowid = const Value.absent(),
+              }) => DismissedThemeWordsCompanion.insert(
+                word: word,
+                dismissedAt: dismissedAt,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (e.readTable(table), BaseReferences(db, table, e)))
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$DismissedThemeWordsTableProcessedTableManager =
+    ProcessedTableManager<
+      _$OneiroDatabase,
+      $DismissedThemeWordsTable,
+      DismissedThemeWord,
+      $$DismissedThemeWordsTableFilterComposer,
+      $$DismissedThemeWordsTableOrderingComposer,
+      $$DismissedThemeWordsTableAnnotationComposer,
+      $$DismissedThemeWordsTableCreateCompanionBuilder,
+      $$DismissedThemeWordsTableUpdateCompanionBuilder,
+      (
+        DismissedThemeWord,
+        BaseReferences<
+          _$OneiroDatabase,
+          $DismissedThemeWordsTable,
+          DismissedThemeWord
+        >,
+      ),
+      DismissedThemeWord,
+      PrefetchHooks Function()
+    >;
 
 class $OneiroDatabaseManager {
   final _$OneiroDatabase _db;
@@ -1094,4 +1485,6 @@ class $OneiroDatabaseManager {
       $$DreamEntriesTableTableManager(_db, _db.dreamEntries);
   $$AppSettingsTableTableManager get appSettings =>
       $$AppSettingsTableTableManager(_db, _db.appSettings);
+  $$DismissedThemeWordsTableTableManager get dismissedThemeWords =>
+      $$DismissedThemeWordsTableTableManager(_db, _db.dismissedThemeWords);
 }
