@@ -6,6 +6,8 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/date_x.dart';
 import '../../../data/db/oneiro_database.dart';
 import '../../../data/providers.dart';
+import '../../speech/domain/speech_recognizer.dart';
+import '../../speech/speech_providers.dart';
 
 /// Create or edit a single dream entry.
 class DreamEditorPage extends ConsumerStatefulWidget {
@@ -26,6 +28,12 @@ class _DreamEditorPageState extends ConsumerState<DreamEditorPage> {
   bool _isLucid = false;
   bool _loading = true;
   bool _saving = false;
+
+  // Dictation state: while listening, the field shows [_dictationBase]
+  // (committed text) plus the live [_currentUtterance] partial.
+  bool _dictating = false;
+  String _dictationBase = '';
+  String _currentUtterance = '';
 
   @override
   void initState() {
@@ -52,8 +60,80 @@ class _DreamEditorPageState extends ConsumerState<DreamEditorPage> {
 
   @override
   void dispose() {
+    if (_dictating) {
+      ref.read(speechRecognizerProvider).stop();
+    }
     _textController.dispose();
     super.dispose();
+  }
+
+  /// Joins committed text and the live utterance with exactly one space.
+  static String _joinDictation(String committed, String utterance) {
+    if (committed.isEmpty) return utterance;
+    if (utterance.isEmpty) return committed;
+    return '$committed $utterance';
+  }
+
+  Future<void> _toggleDictation() async {
+    final recognizer = ref.read(speechRecognizerProvider);
+    if (_dictating) {
+      await recognizer.stop();
+      if (!mounted) return;
+      setState(() {
+        _dictating = false;
+        // Commit whatever partial utterance was still on screen.
+        _dictationBase = _joinDictation(_dictationBase, _currentUtterance);
+        _currentUtterance = '';
+        _replaceEditorText(_dictationBase);
+      });
+      return;
+    }
+    final available = await recognizer.initialize();
+    if (!mounted) return;
+    if (!available) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Microphone access is needed to dictate your dream — '
+              'allow it in the app settings.',
+            ),
+          ),
+        );
+      return;
+    }
+    setState(() {
+      _dictating = true;
+      _dictationBase = _textController.text.trimRight();
+      _currentUtterance = '';
+    });
+    await recognizer.start(
+      onPhrase: _onDictationPhrase,
+      onSessionEnd: () {
+        if (mounted) setState(() => _dictating = false);
+      },
+    );
+  }
+
+  void _onDictationPhrase(SpeechPhrase phrase) {
+    if (!mounted) return;
+    setState(() {
+      if (phrase.isFinal) {
+        _dictationBase = _joinDictation(_dictationBase, phrase.words);
+        _currentUtterance = '';
+      } else {
+        _currentUtterance = phrase.words;
+      }
+      _replaceEditorText(_joinDictation(_dictationBase, _currentUtterance));
+    });
+  }
+
+  void _replaceEditorText(String text) {
+    _textController.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
   }
 
   Future<void> _pickDate() async {
@@ -112,6 +192,12 @@ class _DreamEditorPageState extends ConsumerState<DreamEditorPage> {
         title: Text(editing ? 'Edit dream' : 'Record a dream'),
         actions: [
           IconButton(
+            tooltip: _dictating ? 'Stop dictation' : 'Dictate dream',
+            onPressed: _toggleDictation,
+            icon: Icon(_dictating ? Icons.mic : Icons.mic_none_outlined),
+            color: _dictating ? theme.colorScheme.error : null,
+          ),
+          IconButton(
             tooltip: 'Save dream',
             onPressed: _saving ? null : _save,
             icon: const Icon(Icons.check),
@@ -147,6 +233,26 @@ class _DreamEditorPageState extends ConsumerState<DreamEditorPage> {
                   onChanged: (value) => setState(() => _isLucid = value),
                 ),
                 const SizedBox(height: 8),
+                if (_dictating)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.circle,
+                          size: 10,
+                          color: theme.colorScheme.error,
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Listening… speak your dream',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: theme.colorScheme.error,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 TextField(
                   controller: _textController,
                   autofocus: !editing,

@@ -38,6 +38,7 @@ dependencies:
   webdav_client: ^1.2.2
   dio: ^5.10.0
   flutter_secure_storage: ^10.0.0
+  speech_to_text: ^7.4.0
 
 dev_dependencies:
   flutter_test:

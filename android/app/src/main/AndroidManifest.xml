@@ -5,8 +5,12 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <!-- Exact scheduling for dream clues and reality checks. -->
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+    <!-- Dictating dreams into the editor with the mic button. The Play Store
+         shows this permission to users; Oneiro uses it only for on-demand
+         speech-to-text while the editor's mic is toggled on. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     <application
-        android:label="oneiro"
+        android:label="Oneiro"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
