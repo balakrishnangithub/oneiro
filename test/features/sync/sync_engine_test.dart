@@ -216,10 +216,12 @@ void main() {
     deviceB.nowMs = 2000;
     await deviceB.repository.softDelete(doomed.id);
     final pushB = await deviceB.engine.sync();
-    expect(pushB.pushed, 1);
+    expect(pushB.pushed, 0);
+    expect(pushB.deletionsPushed, 1);
 
     final pullA = await deviceA.engine.sync();
-    expect(pullA.pulled, 1);
+    expect(pullA.pulled, 0);
+    expect(pullA.deletionsPulled, 1);
 
     // Tombstoned on A: invisible to the journal, still present as a row.
     expect(
@@ -234,6 +236,8 @@ void main() {
     final again = await deviceA.engine.sync();
     expect(again.pushed, 0);
     expect(again.archiveUploaded, isFalse);
+    expect(again.deletionsPulled, 0);
+    expect(again.skipped, 1, reason: 'agreed tombstones are not "skipped"');
   });
 
   test('wipe-and-restore: a fresh device rebuilds the journal', () async {
@@ -248,7 +252,8 @@ void main() {
     await restored.engine.unlockOrCreateVault(passphrase, kdfN: 256);
     final report = await restored.engine.sync();
 
-    expect(report.pulled, 3); // two live entries + one tombstone
+    expect(report.pulled, 2); // live entries only…
+    expect(report.deletionsPulled, 1); // …the tombstone is reported apart
     expect(report.archiveUploaded, isFalse); // pure pull: nothing to upload
     final active = await restored.repository.getAllActive();
     expect(active.map((e) => e.id).toSet(), {entries[0].id, entries[1].id});
@@ -261,7 +266,40 @@ void main() {
     final settled = await restored.engine.sync();
     expect(settled.pushed, 0);
     expect(settled.pulled, 0);
-    expect(settled.skipped, 3);
+    expect(settled.deletionsPulled, 0);
+    expect(settled.skipped, 2, reason: 'the agreed tombstone stays silent');
+  });
+
+  test('restore (undo delete) wins the entry back on every device', () async {
+    final entries = await seedBothDevices(count: 2);
+    final doomed = entries[0];
+
+    // A deletes at t=2000; the tombstone reaches the vault and B.
+    deviceA.nowMs = 2000;
+    await deviceA.repository.softDelete(doomed.id);
+    await deviceA.engine.sync();
+    await deviceB.engine.sync();
+    expect((await deviceB.repository.getById(doomed.id))!.deletedAt, 2000);
+
+    // A taps undo at t=3000. The restore must bump updatedAt, otherwise the
+    // merge sees "identical content" and the vault keeps the dream deleted
+    // on every other device forever.
+    deviceA.nowMs = 3000;
+    await deviceA.repository.restore(doomed.id);
+    final pushA = await deviceA.engine.sync();
+    expect(pushA.pushed, 1);
+    expect(pushA.deletionsPushed, 0);
+    expect(pushA.archiveUploaded, isTrue);
+
+    final pullB = await deviceB.engine.sync();
+    expect(pullB.pulled, 1);
+    final revived = (await deviceB.repository.getById(doomed.id))!;
+    expect(revived.deletedAt, isNull);
+    expect(revived.updatedAt, 3000);
+    expect(
+      (await deviceB.repository.getAllActive()).map((e) => e.id),
+      contains(doomed.id),
+    );
   });
 
   test('corrupted archive is quarantined, rebuilt locally, then self-heals '

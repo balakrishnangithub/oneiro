@@ -72,9 +72,18 @@ class DreamEntryDao extends DatabaseAccessor<OneiroDatabase>
       );
 
   /// Clears the tombstone of entry [id] (undo of [softDelete]).
-  Future<int> restore(String id) =>
+  ///
+  /// [restoredAtMs] must bump `updatedAt` along with the tombstone clear:
+  /// the sync merge treats equal `updatedAt` as identical content, so a
+  /// restore that keeps the deletion timestamp would never win against the
+  /// tombstone already in the vault — the undeleted dream would stay dead
+  /// on every other device.
+  Future<int> restore(String id, int restoredAtMs) =>
       (update(dreamEntries)..where((t) => t.id.equals(id))).write(
-        const DreamEntriesCompanion(deletedAt: Value(null)),
+        DreamEntriesCompanion(
+          deletedAt: const Value(null),
+          updatedAt: Value(restoredAtMs),
+        ),
       );
 
   Future<int> _count(Expression<bool> filter) {

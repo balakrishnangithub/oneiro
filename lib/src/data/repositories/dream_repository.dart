@@ -85,7 +85,8 @@ class DriftDreamRepository implements DreamRepository {
       _dao.softDelete(id, _now().millisecondsSinceEpoch);
 
   @override
-  Future<void> restore(String id) => _dao.restore(id);
+  Future<void> restore(String id) =>
+      _dao.restore(id, _now().millisecondsSinceEpoch);
 
   @override
   Future<int> countEntries() => _dao.countActive();

@@ -23,8 +23,20 @@ class SyncReport {
   /// last-write-wins by `updatedAt` (see `docs/sync-format.md`).
   int conflictsResolved = 0;
 
-  /// Entries found already in agreement during the merge.
+  /// Entries found already in agreement during the merge. Tombstones in
+  /// agreement are not counted here — [skipped] tracks live dreams only,
+  /// so it always matches what the journal list shows.
   int skipped = 0;
+
+  /// Remote tombstones applied locally — dreams deleted on another device.
+  /// Counted apart from [pulled] so the numbers match what the journal
+  /// actually gains: pulling a vault of 373 dreams plus 3 tombstones reads
+  /// "pulled 373, 3 deletions", not "pulled 376".
+  int deletionsPulled = 0;
+
+  /// Local tombstones carried by the uploaded archive — dreams deleted on
+  /// this device since the last sync.
+  int deletionsPushed = 0;
 
   /// Whether the merged archive was (re)uploaded this run.
   bool archiveUploaded = false;
@@ -45,6 +57,8 @@ class SyncReport {
   String toString() => needsUnlock
       ? 'SyncReport(needsUnlock)'
       : 'SyncReport(pushed: $pushed, pulled: $pulled, '
+            'deletionsPushed: $deletionsPushed, '
+            'deletionsPulled: $deletionsPulled, '
             'conflicts: $conflictsResolved, skipped: $skipped, '
             'archiveUploaded: $archiveUploaded, '
             'warnings: ${warnings.length})';
@@ -242,32 +256,53 @@ class SyncEngine {
         winners[id] = remote;
         await _applyRemote(remote);
         await _db.syncStateDao.markSynced(id, remote.updatedAt);
-        report.pulled++;
+        if (remote.deletedAt != null) {
+          report.deletionsPulled++;
+        } else {
+          report.pulled++;
+        }
       } else if (local != null && remote == null) {
         // Only local has it: it must reach the archive.
         winners[id] = SyncedEntry.fromEntry(local);
         uploadNeeded = true;
-        if (localDirty) report.pushed++;
+        if (localDirty) {
+          if (local.deletedAt != null) {
+            report.deletionsPushed++;
+          } else {
+            report.pushed++;
+          }
+        }
       } else if (local != null && remote != null) {
         if (remote.updatedAt > local.updatedAt) {
           // Remote wins (last-write-wins).
           winners[id] = remote;
           await _applyRemote(remote);
           await _db.syncStateDao.markSynced(id, remote.updatedAt);
-          report.pulled++;
+          if (remote.deletedAt != null) {
+            report.deletionsPulled++;
+          } else {
+            report.pulled++;
+          }
           if (localDirty) report.conflictsResolved++;
         } else {
           winners[id] = SyncedEntry.fromEntry(local);
           if (remote.updatedAt < local.updatedAt) {
             // Local wins: the archive must be refreshed.
             uploadNeeded = true;
-            if (localDirty) report.pushed++;
+            if (localDirty) {
+              if (local.deletedAt != null) {
+                report.deletionsPushed++;
+              } else {
+                report.pushed++;
+              }
+            }
             if (lastSynced != null && lastSynced != remote.updatedAt) {
               report.conflictsResolved++;
             }
           } else {
-            // Identical timestamps: treated as identical content.
-            report.skipped++;
+            // Identical timestamps: treated as identical content. Agreed
+            // tombstones stay uncounted — "skipped" mirrors the journal.
+            if (local.deletedAt == null) report.skipped++;
             if (lastSynced != local.updatedAt) {
               await _db.syncStateDao.markSynced(id, local.updatedAt);
             }

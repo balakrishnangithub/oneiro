@@ -274,6 +274,7 @@ class SyncController extends Notifier<SyncUiState> {
           lastRunSummary = SyncRunSummary(
             pushed: report.pushed,
             pulled: report.pulled,
+            deletions: report.deletionsPulled + report.deletionsPushed,
             conflictsResolved: report.conflictsResolved,
             warningCount: report.warnings.length,
             background: false,

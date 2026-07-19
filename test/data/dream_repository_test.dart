@@ -86,8 +86,14 @@ void main() {
       expect(await repository.countEntries(), 0);
       expect((await repository.getById(entry.id))!.deletedAt, isNotNull);
 
+      fakeNow = DateTime(2026, 5, 19, 9, 30);
       await repository.restore(entry.id);
       expect(await repository.countEntries(), 1);
+      expect(
+        (await repository.getById(entry.id))!.updatedAt,
+        fakeNow.millisecondsSinceEpoch,
+        reason: 'restored entries sync back: updatedAt must beat the tombstone',
+      );
     });
 
     test('counts track lucid entries', () async {

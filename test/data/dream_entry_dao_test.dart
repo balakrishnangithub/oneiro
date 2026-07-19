@@ -104,10 +104,16 @@ void main() {
         reason: 'row stays as a tombstone',
       );
 
-      await dao.restore('a');
+      await dao.restore('a', 7000);
 
       expect(await dao.getActive(), hasLength(1));
-      expect((await dao.getById('a'))!.deletedAt, isNull);
+      final restored = (await dao.getById('a'))!;
+      expect(restored.deletedAt, isNull);
+      expect(
+        restored.updatedAt,
+        7000,
+        reason: 'restore must look newer than the tombstone for sync',
+      );
     });
 
     test('search matches body text case-insensitively', () async {

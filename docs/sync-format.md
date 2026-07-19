@@ -112,6 +112,12 @@ Conflict resolution is **last-write-wins** by `updatedAt` (documented,
 deterministic; no merge of conflicting edits). Each device keeps a local
 `sync_state` table: `entryId → lastSyncedUpdatedAt`.
 
+For LWW to work, **every local mutation must bump `updatedAt`** — create,
+edit, delete (`deletedAt` set) and undo-delete (`deletedAt` cleared) alike.
+A mutation that keeps its old `updatedAt` is invisible to the merge: equal
+timestamps are treated as identical content, so the change would never
+reach the vault.
+
 1. **Download** — fetch `archive.bin` if present and decrypt it into the
    remote entry set. A corrupted archive is **quarantined** (renamed to
    `archive.corrupted-<timestamp>.bin`, never overwritten), reported as a
@@ -133,6 +139,12 @@ deterministic; no merge of conflicting edits). Each device keeps a local
    succeeds.
 4. **Cleanup** — once a v2 archive exists remotely, the legacy v1
    `entries/` folder (if any) is removed.
+
+Run counters follow the journal, not the wire: `pushed` / `pulled` /
+`skipped` count live dreams only, while tombstones travel in
+`deletionsPushed` / `deletionsPulled` (and stay silent once both sides
+agree). A fresh install pulling a vault of 373 dreams plus 3 tombstones
+therefore reports "pulled 373, 3 deletions".
 
 Because every sync merges full state and uploads are atomic, an interrupted
 sync is always safe: whatever was applied locally is recorded in sync-state,

@@ -121,6 +121,7 @@ class SyncRunSummary {
   const SyncRunSummary({
     required this.pushed,
     required this.pulled,
+    this.deletions = 0,
     required this.conflictsResolved,
     required this.warningCount,
     required this.background,
@@ -129,6 +130,9 @@ class SyncRunSummary {
 
   final int pushed;
   final int pulled;
+
+  /// Tombstones replicated in either direction (see [SyncReport]).
+  final int deletions;
   final int conflictsResolved;
   final int warningCount;
 
@@ -140,6 +144,7 @@ class SyncRunSummary {
   Map<String, Object?> toJson() => {
     'pushed': pushed,
     'pulled': pulled,
+    'deletions': deletions,
     'conflicts': conflictsResolved,
     'warnings': warningCount,
     'background': background,
@@ -153,6 +158,7 @@ class SyncRunSummary {
     return SyncRunSummary(
       pushed: intField('pushed'),
       pulled: intField('pulled'),
+      deletions: intField('deletions'),
       conflictsResolved: intField('conflicts'),
       warningCount: intField('warnings'),
       background: json['background'] == true,
