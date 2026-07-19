@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
@@ -6,6 +8,7 @@ import '../../settings/presentation/settings_page.dart';
 import '../data/secure_credentials_store.dart';
 import '../data/sync_settings_repository.dart';
 import '../data/webdav_vault_store.dart';
+import '../domain/sync_engine.dart';
 import '../sync_providers.dart';
 
 /// "Encrypted Sync" settings section: backend connection, vault passphrase
@@ -79,6 +82,10 @@ class _SyncSectionState extends ConsumerState<SyncSection> {
         .read(syncControllerProvider.notifier)
         .unlock(passphrase);
     if (!mounted) return;
+    // The passphrase field leaves the tree once the vault is unlocked;
+    // without an explicit unfocus the keyboard focus jumps to the WebDAV
+    // password field above and the keyboard pops back up for no reason.
+    FocusScope.of(context).unfocus();
     if (error != null) {
       ScaffoldMessenger.of(
         context,
@@ -240,10 +247,16 @@ class _SyncSectionState extends ConsumerState<SyncSection> {
               ref
                   .read(syncSettingsRepositoryProvider)
                   .save(current.copyWith(rememberPassphrase: value));
+              final scheduler = ref.read(backgroundSyncSchedulerProvider);
               if (!value) {
                 ref
                     .read(secureCredentialsStoreProvider)
                     .delete(SecureCredentialKeys.vaultPassphrase);
+                // Without a remembered passphrase the background isolate
+                // cannot unlock the vault — stop waking up for it.
+                unawaited(scheduler.cancel());
+              } else {
+                unawaited(scheduler.ensureScheduled());
               }
             },
           ),
@@ -263,7 +276,11 @@ class _SyncSectionState extends ConsumerState<SyncSection> {
               FilledButton.icon(
                 onPressed: syncState.syncing ? null : _syncNow,
                 icon: const Icon(Icons.sync),
-                label: Text(syncState.syncing ? 'Syncing…' : 'Sync now'),
+                label: Text(
+                  syncState.syncing
+                      ? _progressText(syncState.progress)
+                      : 'Sync now',
+                ),
               ),
             ],
           ),
@@ -292,8 +309,17 @@ class _SyncSectionState extends ConsumerState<SyncSection> {
     return 'Strength: excellent';
   }
 
+  static String _progressText(SyncProgress? progress) {
+    if (progress == null) return 'Syncing…';
+    final verb = switch (progress.phase) {
+      SyncPhase.push => 'Pushing',
+      SyncPhase.pull => 'Pulling',
+    };
+    return '$verb ${progress.processed}/${progress.total}…';
+  }
+
   static String _statusText(SyncUiState state) {
-    if (state.syncing) return 'Syncing…';
+    if (state.syncing) return _progressText(state.progress);
     if (state.lastError != null) return state.lastError!;
     final report = state.lastReport;
     if (report != null && !report.needsUnlock) {
@@ -319,7 +345,11 @@ class _SyncSectionState extends ConsumerState<SyncSection> {
 }
 
 /// One labelled text field inside the sync section.
-class _FieldTile extends StatelessWidget {
+///
+/// Password-style fields ([obscure]) get an eye toggle in the suffix so the
+/// user can double-check what they typed — typos in a WebDAV app password or
+/// a vault passphrase are otherwise invisible.
+class _FieldTile extends StatefulWidget {
   const _FieldTile({
     required this.controller,
     required this.label,
@@ -337,19 +367,37 @@ class _FieldTile extends StatelessWidget {
   final ValueChanged<String>? onChanged;
 
   @override
+  State<_FieldTile> createState() => _FieldTileState();
+}
+
+class _FieldTileState extends State<_FieldTile> {
+  late bool _obscured = widget.obscure;
+
+  @override
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
       child: TextField(
-        controller: controller,
-        obscureText: obscure,
-        keyboardType: keyboardType,
-        onChanged: onChanged,
+        controller: widget.controller,
+        obscureText: _obscured,
+        keyboardType: widget.keyboardType,
+        onChanged: widget.onChanged,
         decoration: InputDecoration(
-          labelText: label,
-          hintText: hint,
+          labelText: widget.label,
+          hintText: widget.hint,
           border: const OutlineInputBorder(),
           isDense: true,
+          suffixIcon: widget.obscure
+              ? IconButton(
+                  tooltip: _obscured ? 'Show' : 'Hide',
+                  icon: Icon(
+                    _obscured
+                        ? Icons.visibility_outlined
+                        : Icons.visibility_off_outlined,
+                  ),
+                  onPressed: () => setState(() => _obscured = !_obscured),
+                )
+              : null,
         ),
       ),
     );

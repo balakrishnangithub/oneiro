@@ -294,4 +294,44 @@ void main() {
       expect(String.fromCharCodes(raw!), 'garbage, not json');
     },
   );
+
+  test('progress reports push and pull phase totals entry by entry', () async {
+    await deviceA.engine.unlockOrCreateVault(passphrase, kdfN: 256);
+    for (var i = 0; i < 3; i++) {
+      await deviceA.addEntry('dream $i');
+    }
+
+    final pushEvents = <SyncProgress>[];
+    final pushReport = await deviceA.engine.sync(onProgress: pushEvents.add);
+    expect(pushReport.pushed, 3);
+    expect(pushEvents.map((e) => (e.phase, e.processed, e.total)).toList(), [
+      (SyncPhase.push, 1, 3),
+      (SyncPhase.push, 2, 3),
+      (SyncPhase.push, 3, 3),
+    ]);
+
+    // A second device pulling the same vault gets pull-phase totals.
+    await deviceB.engine.unlockOrCreateVault(passphrase, kdfN: 256);
+    final pullEvents = <SyncProgress>[];
+    final pullReport = await deviceB.engine.sync(onProgress: pullEvents.add);
+    expect(pullReport.pulled, 3);
+    expect(pullEvents.map((e) => (e.phase, e.processed, e.total)).toList(), [
+      (SyncPhase.pull, 1, 3),
+      (SyncPhase.pull, 2, 3),
+      (SyncPhase.pull, 3, 3),
+    ]);
+
+    // Nothing dirty locally: no push work, but the pull phase still walks
+    // every remote file to confirm agreement.
+    final idleEvents = <SyncProgress>[];
+    final idleReport = await deviceA.engine.sync(onProgress: idleEvents.add);
+    expect(idleReport.pushed, 0);
+    expect(idleReport.pulled, 0);
+    expect(idleReport.skipped, 3);
+    expect(idleEvents.map((e) => (e.phase, e.processed, e.total)).toList(), [
+      (SyncPhase.pull, 1, 3),
+      (SyncPhase.pull, 2, 3),
+      (SyncPhase.pull, 3, 3),
+    ]);
+  });
 }

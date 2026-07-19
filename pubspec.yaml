@@ -39,6 +39,8 @@ dependencies:
   dio: ^5.10.0
   flutter_secure_storage: ^10.0.0
   speech_to_text: ^7.4.0
+  wakelock_plus: ^1.4.0
+  workmanager: ^0.9.0+3
 
 dev_dependencies:
   flutter_test:

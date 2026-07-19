@@ -269,4 +269,175 @@ void main() {
 
     await unmountApp(tester);
   });
+
+  testWidgets('sync holds a wake lock for the whole run', (tester) async {
+    final wakeLock = FakeSyncWakeLock();
+    final dir = tempVaultDir();
+    tester.view.physicalSize = const Size(1080, 3400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          oneiroDatabaseProvider.overrideWithValue(db),
+          secureCredentialsStoreProvider.overrideWithValue(secureStore),
+          syncWakeLockProvider.overrideWithValue(wakeLock),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) {
+                container = ProviderScope.containerOf(context);
+                return const SingleChildScrollView(child: SyncSection());
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await configureLocalFolder(tester, dir);
+    await warmUpSyncStore(tester);
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Vault passphrase'),
+      'a very strong passphrase',
+    );
+    await tapAndWaitFor(
+      tester,
+      find.text('Set / unlock'),
+      find.widgetWithText(ListTile, 'Vault unlocked'),
+    );
+    await tapAndWaitFor(
+      tester,
+      find.text('Sync now'),
+      find.textContaining('pushed 0, pulled 0'),
+    );
+
+    expect(wakeLock.acquireCount, 1);
+    expect(wakeLock.releaseCount, 1);
+
+    await unmountApp(tester);
+  });
+
+  testWidgets('password fields offer a show/hide eye toggle', (tester) async {
+    await pumpSection(tester);
+
+    TextField passwordField() =>
+        tester.widget<TextField>(find.widgetWithText(TextField, 'Password'));
+
+    expect(passwordField().obscureText, isTrue);
+    await tester.tap(find.byTooltip('Show').first);
+    await tester.pump();
+    expect(passwordField().obscureText, isFalse);
+    await tester.tap(find.byTooltip('Hide').first);
+    await tester.pump();
+    expect(passwordField().obscureText, isTrue);
+
+    await unmountApp(tester);
+  });
+
+  testWidgets('unlock drops the keyboard focus instead of jumping to the '
+      'password field', (tester) async {
+    final dir = tempVaultDir();
+    await pumpSection(tester);
+    await configureLocalFolder(tester, dir);
+    await warmUpSyncStore(tester);
+
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Vault passphrase'),
+      'a very strong passphrase',
+    );
+    expect(FocusManager.instance.primaryFocus, isNotNull);
+
+    await tapAndWaitFor(
+      tester,
+      find.text('Set / unlock'),
+      find.widgetWithText(ListTile, 'Vault unlocked'),
+    );
+
+    // No input field keeps focus: primary focus sits on the enclosing
+    // Navigator scope (an EditableText would hold a plain FocusNode).
+    expect(FocusManager.instance.primaryFocus, isA<FocusScopeNode>());
+
+    await unmountApp(tester);
+  });
+
+  testWidgets('background sync is scheduled on remembered unlock and '
+      'cancelled on lock', (tester) async {
+    final scheduler = FakeBackgroundSyncScheduler();
+    final dir = tempVaultDir();
+    tester.view.physicalSize = const Size(1080, 3400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          oneiroDatabaseProvider.overrideWithValue(db),
+          secureCredentialsStoreProvider.overrideWithValue(secureStore),
+          backgroundSyncSchedulerProvider.overrideWithValue(scheduler),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) {
+                container = ProviderScope.containerOf(context);
+                return const SingleChildScrollView(child: SyncSection());
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await configureLocalFolder(tester, dir);
+    await warmUpSyncStore(tester);
+
+    // "Remember on this device" only renders while the vault is locked.
+    Future<void> toggleRemember() async {
+      await tester.tap(
+        find.widgetWithText(SwitchListTile, 'Remember on this device'),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> unlock() async {
+      await tester.enterText(
+        find.widgetWithText(TextField, 'Vault passphrase'),
+        'a very strong passphrase',
+      );
+      await tapAndWaitFor(
+        tester,
+        find.text('Set / unlock'),
+        find.widgetWithText(ListTile, 'Vault unlocked'),
+      );
+    }
+
+    // Toggling remember on schedules; toggling it back off cancels.
+    await toggleRemember();
+    expect(scheduler.ensureScheduledCount, 1);
+    await toggleRemember();
+    expect(scheduler.cancelCount, 1);
+
+    // Unlock with remember OFF: background sync stays off (cancel re-armed).
+    await unlock();
+    expect(scheduler.ensureScheduledCount, 1);
+    expect(scheduler.cancelCount, 2);
+
+    // Locking the vault always cancels.
+    await tester.tap(find.text('Lock'));
+    await tester.pumpAndSettle();
+    expect(scheduler.cancelCount, 3);
+
+    // Unlock with remember ON schedules the periodic background sync.
+    await toggleRemember();
+    expect(scheduler.ensureScheduledCount, 2);
+    await unlock();
+    expect(scheduler.ensureScheduledCount, 3);
+    await tester.tap(find.text('Lock'));
+    await tester.pumpAndSettle();
+    expect(scheduler.cancelCount, 4);
+
+    await unmountApp(tester);
+  });
 }

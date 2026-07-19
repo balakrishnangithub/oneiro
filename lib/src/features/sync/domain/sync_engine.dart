@@ -46,6 +46,33 @@ class SyncReport {
             'warnings: ${warnings.length})';
 }
 
+/// Which half of a sync run is currently processing entries.
+enum SyncPhase {
+  /// Uploading locally changed entries (after last-write-wins checks).
+  push,
+
+  /// Downloading remote files the push phase did not touch.
+  pull,
+}
+
+/// Live progress of one [SyncEngine.sync] run.
+class SyncProgress {
+  const SyncProgress({
+    required this.phase,
+    required this.processed,
+    required this.total,
+  });
+
+  /// The half of the run currently working.
+  final SyncPhase phase;
+
+  /// Entries handled so far in this phase (1-based once work starts).
+  final int processed;
+
+  /// Entries to handle in this phase.
+  final int total;
+}
+
 /// Replicates the local journal with an encrypted OVault remote.
 ///
 /// The engine is pure Dart + drift: it talks to any [RemoteVaultStore] and
@@ -130,7 +157,12 @@ class SyncEngine {
 
   /// Runs one full push+pull replication. Never throws on per-file
   /// corruption or I/O problems; see [SyncReport.warnings].
-  Future<SyncReport> sync() async {
+  ///
+  /// [onProgress] is called after every processed entry with the running
+  /// phase totals, so callers can show "Pushing 45/377…" style feedback.
+  Future<SyncReport> sync({
+    void Function(SyncProgress progress)? onProgress,
+  }) async {
     final crypto = _crypto;
     if (crypto == null) {
       return SyncReport(needsUnlock: true);
@@ -149,25 +181,34 @@ class SyncEngine {
     final processed = <String>{};
 
     // --- Push phase: dirty local entries (including tombstones) -----------
-    for (final entry in localEntries) {
+    final dirty = [
+      for (final entry in localEntries)
+        if (lastSyncedById[entry.id] == null ||
+            lastSyncedById[entry.id] != entry.updatedAt)
+          entry,
+    ];
+    var pushDone = 0;
+    for (final entry in dirty) {
       final lastSynced = lastSyncedById[entry.id];
-      final isDirty = lastSynced == null || lastSynced != entry.updatedAt;
-      if (!isDirty) continue;
       processed.add(entry.id);
 
       // Read the remote side first so last-write-wins never blindsides a
-      // newer remote version.
+      // newer remote version. An unreadable remote file skips the entry
+      // entirely rather than clobbering unknown data.
       SyncedEntry? remote;
+      var skippedForUnreadableRemote = false;
       if (remoteIdSet.contains(entry.id)) {
         final read = await _readRemote(crypto, entry.id, report);
         if (read.failed) {
-          // Unreadable remote file: skip rather than clobber unknown data.
-          continue;
+          skippedForUnreadableRemote = true;
+        } else {
+          remote = read.payload;
         }
-        remote = read.payload;
       }
 
-      if (remote != null && remote.updatedAt > entry.updatedAt) {
+      if (skippedForUnreadableRemote) {
+        // Deliberately no-op; the entry stays dirty for the next run.
+      } else if (remote != null && remote.updatedAt > entry.updatedAt) {
         // Remote wins (last-write-wins).
         await _applyRemote(remote);
         await _db.syncStateDao.markSynced(entry.id, remote.updatedAt);
@@ -192,37 +233,58 @@ class SyncEngine {
           report.warnings.add('could not push entry ${entry.id}: $error');
         }
       }
+      pushDone++;
+      onProgress?.call(
+        SyncProgress(
+          phase: SyncPhase.push,
+          processed: pushDone,
+          total: dirty.length,
+        ),
+      );
     }
 
     // --- Pull phase: remote files the push phase did not handle -----------
-    for (final id in remoteIds) {
-      if (processed.contains(id)) continue;
+    final pullIds = [
+      for (final id in remoteIds)
+        if (!processed.contains(id)) id,
+    ];
+    var pullDone = 0;
+    for (final id in pullIds) {
       final read = await _readRemote(crypto, id, report);
-      if (read.failed) continue;
-      final payload = read.payload;
-      if (payload == null) continue; // vanished between list and read
-
-      final local = localById[id];
-      if (local == null) {
-        // Unknown locally: apply (a tombstone payload inserts a tombstone
-        // row, so the deletion stays durable).
-        await _applyRemote(payload);
-        await _db.syncStateDao.markSynced(id, payload.updatedAt);
-        report.pulled++;
-      } else if (payload.updatedAt > local.updatedAt) {
-        await _applyRemote(payload);
-        await _db.syncStateDao.markSynced(id, payload.updatedAt);
-        report.pulled++;
-      } else {
-        // Equal: already in agreement. Older-remote: the remote was rolled
-        // back externally and the local entry is not dirty, so we keep the
-        // local version without fighting the server (documented policy).
-        if (payload.updatedAt == local.updatedAt &&
-            lastSyncedById[id] != payload.updatedAt) {
+      final payload = read.failed ? null : read.payload;
+      // A file that vanished between listing and reading (or failed to
+      // read) still counts as processed for progress purposes.
+      if (payload != null) {
+        final local = localById[id];
+        if (local == null) {
+          // Unknown locally: apply (a tombstone payload inserts a tombstone
+          // row, so the deletion stays durable).
+          await _applyRemote(payload);
           await _db.syncStateDao.markSynced(id, payload.updatedAt);
+          report.pulled++;
+        } else if (payload.updatedAt > local.updatedAt) {
+          await _applyRemote(payload);
+          await _db.syncStateDao.markSynced(id, payload.updatedAt);
+          report.pulled++;
+        } else {
+          // Equal: already in agreement. Older-remote: the remote was rolled
+          // back externally and the local entry is not dirty, so we keep the
+          // local version without fighting the server (documented policy).
+          if (payload.updatedAt == local.updatedAt &&
+              lastSyncedById[id] != payload.updatedAt) {
+            await _db.syncStateDao.markSynced(id, payload.updatedAt);
+          }
+          report.skipped++;
         }
-        report.skipped++;
       }
+      pullDone++;
+      onProgress?.call(
+        SyncProgress(
+          phase: SyncPhase.pull,
+          processed: pullDone,
+          total: pullIds.length,
+        ),
+      );
     }
 
     return report;

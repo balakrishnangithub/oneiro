@@ -4,17 +4,28 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/providers.dart';
-import 'data/local_directory_vault_store.dart';
+import 'background/background_sync.dart';
 import 'data/remote_vault_store.dart';
 import 'data/secure_credentials_store.dart';
 import 'data/sync_settings_repository.dart';
-import 'data/webdav_vault_store.dart';
+import 'data/sync_wake_lock.dart';
+import 'data/vault_store_factory.dart';
 import 'domain/crypto/vault_crypto.dart';
 import 'domain/sync_engine.dart';
 
 /// Platform credential vault for sync secrets; faked in tests.
 final secureCredentialsStoreProvider = Provider<SecureCredentialsStore>(
   (ref) => FlutterSecureCredentialsStore(),
+);
+
+/// Keeps the device awake during a sync run; faked in tests.
+final syncWakeLockProvider = Provider<SyncWakeLock>(
+  (ref) => WakelockPlusSyncWakeLock(),
+);
+
+/// Schedules the WorkManager periodic background sync; faked in tests.
+final backgroundSyncSchedulerProvider = Provider<BackgroundSyncScheduler>(
+  (ref) => WorkmanagerBackgroundSyncScheduler(),
 );
 
 /// Typed façade over the `app_settings` keys owned by the sync feature.
@@ -33,23 +44,7 @@ final syncConnectionSettingsProvider = StreamProvider<SyncConnectionSettings>(
 final remoteVaultStoreProvider = FutureProvider<RemoteVaultStore?>((ref) async {
   final settings = await ref.watch(syncConnectionSettingsProvider.future);
   final secure = ref.watch(secureCredentialsStoreProvider);
-  switch (settings.backendType) {
-    case SyncBackendType.localFolder:
-      final path = settings.localFolderPath.trim();
-      if (path.isEmpty) return null;
-      return LocalDirectoryVaultStore(path);
-    case SyncBackendType.webdav:
-      final url = settings.url.trim();
-      if (url.isEmpty) return null;
-      final password =
-          await secure.read(SecureCredentialKeys.syncPassword) ?? '';
-      return WebdavVaultStore.connect(
-        url: url,
-        username: settings.username,
-        password: password,
-        basePath: settings.basePath,
-      );
-  }
+  return buildRemoteVaultStore(settings, secure);
 });
 
 /// Immutable UI-facing view of the sync feature.
@@ -57,6 +52,7 @@ class SyncUiState {
   const SyncUiState({
     this.unlocked = false,
     this.syncing = false,
+    this.progress,
     this.lastSyncAt,
     this.lastReport,
     this.lastError,
@@ -67,6 +63,9 @@ class SyncUiState {
 
   /// A sync run is in flight.
   final bool syncing;
+
+  /// Live phase counts of the in-flight run, null when not syncing.
+  final SyncProgress? progress;
 
   /// Last successful sync completion time (persisted across restarts).
   final DateTime? lastSyncAt;
@@ -80,6 +79,7 @@ class SyncUiState {
   SyncUiState copyWith({
     bool? unlocked,
     bool? syncing,
+    SyncProgress? Function()? progress,
     DateTime? lastSyncAt,
     SyncReport? lastReport,
     String? Function()? lastError,
@@ -87,6 +87,7 @@ class SyncUiState {
     return SyncUiState(
       unlocked: unlocked ?? this.unlocked,
       syncing: syncing ?? this.syncing,
+      progress: progress == null ? this.progress : progress(),
       lastSyncAt: lastSyncAt ?? this.lastSyncAt,
       lastReport: lastReport ?? this.lastReport,
       lastError: lastError == null ? this.lastError : lastError(),
@@ -140,6 +141,16 @@ class SyncController extends Notifier<SyncUiState> {
       await engine.unlockOrCreateVault(passphrase);
       _crypto = engine.crypto;
       state = state.copyWith(unlocked: true, lastError: () => null);
+      // With "remember on this device" the passphrase is available to the
+      // WorkManager background isolate too, so periodic sync can run even
+      // while the app is closed. Without it, background sync stays off.
+      final settings = await ref.read(syncConnectionSettingsProvider.future);
+      final scheduler = ref.read(backgroundSyncSchedulerProvider);
+      if (settings.rememberPassphrase) {
+        unawaited(scheduler.ensureScheduled());
+      } else {
+        unawaited(scheduler.cancel());
+      }
       return null;
     } on WrongPassphraseException {
       const message = 'Passphrase does not match this vault';
@@ -156,6 +167,7 @@ class SyncController extends Notifier<SyncUiState> {
   Future<void> lock() async {
     _crypto = null;
     state = state.copyWith(unlocked: false);
+    unawaited(ref.read(backgroundSyncSchedulerProvider).cancel());
     try {
       await ref
           .read(secureCredentialsStoreProvider)
@@ -166,7 +178,8 @@ class SyncController extends Notifier<SyncUiState> {
   }
 
   /// Runs one sync now. Returns the report, or null when sync is not
-  /// configured.
+  /// configured. Holds a wake lock for the whole run so the phone cannot
+  /// doze off mid-upload.
   Future<SyncReport?> syncNow() async {
     final engine = await _newEngine();
     if (engine == null) {
@@ -175,9 +188,18 @@ class SyncController extends Notifier<SyncUiState> {
       );
       return null;
     }
-    state = state.copyWith(syncing: true, lastError: () => null);
+    state = state.copyWith(
+      syncing: true,
+      progress: () => null,
+      lastError: () => null,
+    );
+    final wakeLock = ref.read(syncWakeLockProvider);
+    await wakeLock.acquire();
     try {
-      final report = await engine.sync();
+      final report = await engine.sync(
+        onProgress: (progress) =>
+            state = state.copyWith(progress: () => progress),
+      );
       _crypto = engine.crypto;
       var lastSyncAt = state.lastSyncAt;
       if (!report.needsUnlock) {
@@ -190,6 +212,7 @@ class SyncController extends Notifier<SyncUiState> {
       }
       state = state.copyWith(
         syncing: false,
+        progress: () => null,
         lastSyncAt: lastSyncAt,
         lastReport: report,
       );
@@ -197,9 +220,12 @@ class SyncController extends Notifier<SyncUiState> {
     } catch (error) {
       state = state.copyWith(
         syncing: false,
+        progress: () => null,
         lastError: () => 'Sync failed: $error',
       );
       return null;
+    } finally {
+      await wakeLock.release();
     }
   }
 
