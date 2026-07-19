@@ -27,11 +27,38 @@ class FlutterNotificationPermissionService
         AndroidFlutterLocalNotificationsPlugin
       >();
 
-  @override
-  Future<bool> isGranted() async =>
-      await _android?.areNotificationsEnabled() ?? true;
+  IOSFlutterLocalNotificationsPlugin? get _ios => _plugin
+      .resolvePlatformSpecificImplementation<
+        IOSFlutterLocalNotificationsPlugin
+      >();
 
   @override
-  Future<bool> request() async =>
-      await _android?.requestNotificationsPermission() ?? true;
+  Future<bool> isGranted() async {
+    final android = _android;
+    if (android != null) {
+      return await android.areNotificationsEnabled() ?? true;
+    }
+    // iOS/macOS expose no permission-status API through the plugin; the
+    // onboarding flow requests once and the system remembers the choice.
+    return true;
+  }
+
+  @override
+  Future<bool> request() async {
+    final android = _android;
+    if (android != null) {
+      return await android.requestNotificationsPermission() ?? true;
+    }
+    final ios = _ios;
+    if (ios != null) {
+      return await ios.requestPermissions(
+            alert: true,
+            badge: true,
+            sound: true,
+          ) ??
+          true;
+    }
+    // macOS and future platforms: nothing to ask for here.
+    return true;
+  }
 }

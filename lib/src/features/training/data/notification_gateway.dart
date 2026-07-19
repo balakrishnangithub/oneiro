@@ -63,6 +63,18 @@ class LocalNotificationGateway implements NotificationGateway {
 
     const settings = InitializationSettings(
       android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+      // Permission prompts are owned by the onboarding flow, so the plugin
+      // must not ask again at initialize time.
+      iOS: DarwinInitializationSettings(
+        requestAlertPermission: false,
+        requestBadgePermission: false,
+        requestSoundPermission: false,
+      ),
+      macOS: DarwinInitializationSettings(
+        requestAlertPermission: false,
+        requestBadgePermission: false,
+        requestSoundPermission: false,
+      ),
     );
     await _plugin.initialize(
       settings: settings,
@@ -91,6 +103,8 @@ class LocalNotificationGateway implements NotificationGateway {
           priority: playSound ? Priority.high : Priority.low,
           playSound: playSound,
         ),
+        iOS: DarwinNotificationDetails(presentSound: playSound),
+        macOS: DarwinNotificationDetails(presentSound: playSound),
       );
 
   @override
