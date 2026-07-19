@@ -1,24 +1,41 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:oneiro/src/data/db/oneiro_database.dart';
+import 'package:oneiro/src/data/providers.dart';
 import 'package:oneiro/src/features/privacy/data/pin_repository.dart';
+import 'package:oneiro/src/features/privacy/data/screen_privacy_service.dart';
 import 'package:oneiro/src/features/privacy/presentation/privacy_section.dart';
+import 'package:oneiro/src/features/privacy/privacy_providers.dart';
 import 'package:oneiro/src/features/sync/sync_providers.dart';
 
 import '../../support/fake_sync_services.dart';
+import '../../support/test_database.dart';
 import '../../support/unmount_app.dart';
 
 void main() {
   late InMemorySecureCredentialsStore secureStore;
   late PinRepository pinRepository;
+  late OneiroDatabase db;
+  late NoopScreenPrivacyService screenPrivacy;
 
   setUp(() {
     secureStore = InMemorySecureCredentialsStore();
     pinRepository = PinRepository(secureStore);
+    db = createTestDatabase();
+    screenPrivacy = NoopScreenPrivacyService();
+  });
+
+  tearDown(() async {
+    await db.close();
   });
 
   Widget wrap() => ProviderScope(
-    overrides: [secureCredentialsStoreProvider.overrideWithValue(secureStore)],
+    overrides: [
+      secureCredentialsStoreProvider.overrideWithValue(secureStore),
+      oneiroDatabaseProvider.overrideWithValue(db),
+      screenPrivacyServiceProvider.overrideWithValue(screenPrivacy),
+    ],
     child: const MaterialApp(
       home: Scaffold(body: SingleChildScrollView(child: PrivacySection())),
     ),
@@ -163,6 +180,31 @@ void main() {
     expect(await pinRepository.verify('4471'), isFalse);
 
     await drainSnackbars(tester);
+    await unmountApp(tester);
+  });
+
+  testWidgets('hide-in-switcher is on by default; toggling applies the flag', (
+    tester,
+  ) async {
+    await pumpSection(tester);
+
+    // Default ON before the user ever touches the switch.
+    final tile = find.widgetWithText(SwitchListTile, 'Hide in app switcher');
+    expect(tile, findsOneWidget);
+    expect(tester.widget<SwitchListTile>(tile).value, isTrue);
+
+    // Turn it off: persisted and pushed to the platform immediately.
+    await tester.tap(tile);
+    await tester.pumpAndSettle();
+    expect(screenPrivacy.lastSecure, isFalse);
+    expect(tester.widget<SwitchListTile>(tile).value, isFalse);
+
+    // Turn it back on.
+    await tester.tap(tile);
+    await tester.pumpAndSettle();
+    expect(screenPrivacy.lastSecure, isTrue);
+    expect(tester.widget<SwitchListTile>(tile).value, isTrue);
+
     await unmountApp(tester);
   });
 }

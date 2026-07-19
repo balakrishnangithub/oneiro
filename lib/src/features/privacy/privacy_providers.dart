@@ -2,8 +2,11 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../data/providers.dart';
 import '../sync/sync_providers.dart';
 import 'data/pin_repository.dart';
+import 'data/screen_privacy_repository.dart';
+import 'data/screen_privacy_service.dart';
 import 'domain/pin_lockout_policy.dart';
 
 /// PIN-hash persistence over the platform credential vault. In tests the
@@ -11,6 +14,21 @@ import 'domain/pin_lockout_policy.dart';
 /// in-memory fake.
 final pinRepositoryProvider = Provider<PinRepository>(
   (ref) => PinRepository(ref.watch(secureCredentialsStoreProvider)),
+);
+
+/// Bridge that applies/lifts Android's FLAG_SECURE window flag.
+final screenPrivacyServiceProvider = Provider<ScreenPrivacyService>(
+  (ref) => MethodChannelScreenPrivacyService(),
+);
+
+/// Persistence for the recents-privacy preference (default ON).
+final screenPrivacyRepositoryProvider = Provider<ScreenPrivacyRepository>(
+  (ref) => ScreenPrivacyRepository(ref.watch(oneiroDatabaseProvider)),
+);
+
+/// Live view of the preference for the Settings toggle.
+final screenPrivacyEnabledProvider = StreamProvider<bool>(
+  (ref) => ref.watch(screenPrivacyRepositoryProvider).watch(),
 );
 
 /// Whether PIN lock is currently enabled. Purely for the Settings section —

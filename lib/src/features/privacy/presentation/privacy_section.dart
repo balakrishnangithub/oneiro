@@ -109,6 +109,8 @@ class PrivacySection extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final enabledAsync = ref.watch(pinEnabledProvider);
     final enabled = enabledAsync.valueOrNull ?? false;
+    final screenSecureAsync = ref.watch(screenPrivacyEnabledProvider);
+    final screenSecure = screenSecureAsync.valueOrNull ?? true;
     return SettingsSectionCard(
       title: 'Privacy',
       children: [
@@ -142,8 +144,25 @@ class PrivacySection extends ConsumerWidget {
             subtitle: const Text('Requires your current PIN'),
             onTap: () => _changeFlow(context, ref),
           ),
+        SwitchListTile(
+          secondary: const Icon(Icons.privacy_tip_outlined),
+          title: const Text('Hide in app switcher'),
+          subtitle: const Text(
+            'Blank card in the recent-apps view; also blocks screenshots '
+            'and screen recording',
+          ),
+          value: screenSecure,
+          onChanged: screenSecureAsync.isLoading
+              ? null
+              : (value) => _setScreenPrivacy(ref, value),
+        ),
       ],
     );
+  }
+
+  Future<void> _setScreenPrivacy(WidgetRef ref, bool secure) async {
+    await ref.read(screenPrivacyRepositoryProvider).save(secure);
+    await ref.read(screenPrivacyServiceProvider).setSecure(secure);
   }
 }
 
