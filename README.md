@@ -125,20 +125,31 @@ AWOKEN_EXPORT_PATH=/path/to/"Awoken Dream Export.txt" flutter test test/features
 4. Tap **Sync now**. On a second device, configure the same location and
    unlock with the same passphrase.
 
+While a manual sync runs, Oneiro holds a wake lock and shows live
+per-entry progress, so a large first push finishes even if the screen
+turns off. If you enable **Remember on this device**, Android also syncs
+periodically (about every 6 hours, on network with a healthy battery)
+while the app is fully closed — that background run needs the remembered
+passphrase to unlock the vault without you. Turn the toggle off (or tap
+**Lock**) and background sync stops with it.
+
 ## Architecture
 
 Feature-first layering (`lib/src/<feature>/{domain,data,presentation}`),
 Riverpod for state/DI, drift (SQLite) for persistence, go_router for
 navigation. All plugin-facing code (notifications, audio, speech, secure
 storage, WebDAV) hides behind interfaces with in-memory fakes, which keeps
-~200 tests fast and device-free. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
-and [docs/backup-format.md](docs/backup-format.md).
+~220 tests fast and device-free. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
+[docs/backup-format.md](docs/backup-format.md), [docs/sync-format.md](docs/sync-format.md)
+and [docs/cross-platform.md](docs/cross-platform.md).
 
 ## Privacy
 
 Oneiro processes everything on your device. The journal database is local;
-sync is optional and end-to-end encrypted. There are no third-party
-analytics, ads or tracking of any kind.
+sync is optional and end-to-end encrypted. An optional PIN lock and a
+hide-from-recents mode (blank card in the app switcher, screenshots
+blocked) protect the journal from casual onlookers. There are no
+third-party analytics, ads or tracking of any kind.
 
 ## Contributing
 
