@@ -61,7 +61,7 @@ class VaultDescriptor {
   final Uint8List check;
 
   static const format = 'ovault';
-  static const version = 1;
+  static const version = 2;
   static const kdfAlgorithm = 'scrypt';
 
   Map<String, Object?> toJson() => {
@@ -132,20 +132,24 @@ class VaultDescriptor {
   }
 }
 
-/// OVault v1 crypto core: passphrase → master key → per-file AES-256-GCM.
+/// OVault v2 crypto core: passphrase → master key → AES-256-GCM envelopes.
 ///
 /// Everything is encrypted client-side before upload; the server only ever
 /// stores opaque envelopes. The master key lives only in this instance's
 /// memory. See `docs/sync-format.md` for the full format specification.
+///
+/// v2 encrypts a single gzip-compressed archive instead of per-entry files;
+/// the envelope format itself is unchanged (only the version field moved to
+/// 2, so v1 clients fail loudly instead of misreading an archive).
 class VaultCrypto {
   VaultCrypto._(this._masterKey);
 
   final Uint8List _masterKey;
   final AesGcm _cipher = AesGcm.with256bits();
 
-  // --- OVault v1 constants ---------------------------------------------------
+  // --- OVault v2 constants ---------------------------------------------------
 
-  /// scrypt parameters pinned by the OVault v1 format.
+  /// scrypt parameters pinned by the OVault format.
   static const defaultKdfN = 32768; // 2^15
   static const defaultKdfR = 8;
   static const defaultKdfP = 1;
@@ -260,30 +264,29 @@ class VaultCrypto {
 
   // --- Envelope encryption ---------------------------------------------------
 
-  /// Encrypts a canonical JSON payload into an OVault envelope
-  /// (`{"v":1,"nonce":b64,"ct":b64}`), UTF-8 encoded. A fresh random nonce is
+  /// Encrypts arbitrary plaintext bytes into an OVault envelope
+  /// (`{"v":2,"nonce":b64,"ct":b64}`), UTF-8 encoded. A fresh random nonce is
   /// generated for every call.
-  Future<Uint8List> encryptJson(Map<String, Object?> value, {Random? random}) {
+  Future<Uint8List> encryptBytes(Uint8List plaintext, {Random? random}) async {
     final nonce = _randomBytes(nonceLength, random ?? Random.secure());
-    return _encryptRaw(utf8.encode(jsonEncode(value)), nonce).then(
-      (ct) => Uint8List.fromList(
-        utf8.encode(
-          jsonEncode({
-            'v': VaultDescriptor.version,
-            'nonce': base64Encode(nonce),
-            'ct': base64Encode(ct),
-          }),
-        ),
+    final ct = await _encryptRaw(plaintext, nonce);
+    return Uint8List.fromList(
+      utf8.encode(
+        jsonEncode({
+          'v': VaultDescriptor.version,
+          'nonce': base64Encode(nonce),
+          'ct': base64Encode(ct),
+        }),
       ),
     );
   }
 
-  /// Decrypts an OVault envelope back into its JSON payload.
+  /// Decrypts an OVault envelope back into raw plaintext bytes.
   ///
   /// Throws [FormatException] on malformed envelopes and
   /// [VaultAuthenticationException] when the authentication tag does not
   /// verify (tampered or wrong key).
-  Future<Map<String, Object?>> decryptJson(Uint8List envelopeBytes) async {
+  Future<Uint8List> decryptBytes(Uint8List envelopeBytes) async {
     final Object? decoded;
     try {
       decoded = jsonDecode(utf8.decode(envelopeBytes));
@@ -312,7 +315,25 @@ class VaultCrypto {
     if (nonce.length != nonceLength) {
       throw FormatException('nonce must be $nonceLength bytes');
     }
-    final plaintext = await _decryptRaw(ct, nonce);
+    return _decryptRaw(ct, nonce);
+  }
+
+  /// Encrypts a canonical JSON payload into an OVault envelope. A fresh
+  /// random nonce is generated for every call.
+  Future<Uint8List> encryptJson(Map<String, Object?> value, {Random? random}) {
+    return encryptBytes(
+      Uint8List.fromList(utf8.encode(jsonEncode(value))),
+      random: random,
+    );
+  }
+
+  /// Decrypts an OVault envelope back into its JSON payload.
+  ///
+  /// Throws [FormatException] on malformed envelopes and
+  /// [VaultAuthenticationException] when the authentication tag does not
+  /// verify (tampered or wrong key).
+  Future<Map<String, Object?>> decryptJson(Uint8List envelopeBytes) async {
+    final plaintext = await decryptBytes(envelopeBytes);
     final Object? payload;
     try {
       payload = jsonDecode(utf8.decode(plaintext));

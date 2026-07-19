@@ -18,11 +18,11 @@ void main() {
     if (tempDir.existsSync()) await tempDir.delete(recursive: true);
   });
 
-  test('ensureStructure creates the vault layout and is idempotent', () async {
+  test('ensureStructure creates the vault folder and is idempotent', () async {
     await store.ensureStructure();
-    expect(Directory('${tempDir.path}/entries').existsSync(), isTrue);
+    expect(tempDir.existsSync(), isTrue);
     await store.ensureStructure(); // second call is a no-op
-    expect(Directory('${tempDir.path}/entries').existsSync(), isTrue);
+    expect(tempDir.existsSync(), isTrue);
   });
 
   test('descriptor round-trips; absent descriptor reads as null', () async {
@@ -31,37 +31,51 @@ void main() {
     expect(await store.readDescriptor(), '{"format":"ovault"}');
   });
 
-  test('write, list, read and delete entry files', () async {
-    expect(await store.listEntryIds(), isEmpty);
-    expect(await store.read('missing'), isNull);
-
-    await store.write('b-entry', Uint8List.fromList([2]));
-    await store.write('a-entry', Uint8List.fromList([1, 2, 3]));
-
-    expect(await store.listEntryIds(), ['a-entry', 'b-entry']);
-    expect(await store.read('a-entry'), [1, 2, 3]);
-
-    await store.delete('a-entry');
-    expect(await store.listEntryIds(), ['b-entry']);
-    expect(await store.read('a-entry'), isNull);
-
-    // Deleting twice is fine.
-    await store.delete('a-entry');
+  test('archive round-trips; absent archive reads as null', () async {
+    expect(await store.readArchive(), isNull);
+    await store.writeArchiveAtomic(Uint8List.fromList([1, 2, 3]));
+    expect(await store.readArchive(), [1, 2, 3]);
   });
 
-  test('list ignores non-json files and subfolders', () async {
-    await store.ensureStructure();
-    await File('${tempDir.path}/entries/notes.txt').writeAsString('x');
-    await Directory('${tempDir.path}/entries/nested').create();
-    await store.write('real-entry', Uint8List.fromList([9]));
-    expect(await store.listEntryIds(), ['real-entry']);
+  test('atomic write leaves no temp files and overwrites cleanly', () async {
+    await store.writeArchiveAtomic(Uint8List.fromList([9]));
+    await store.writeArchiveAtomic(Uint8List.fromList([7, 7]));
+    expect(await store.readArchive(), [7, 7]);
+
+    final leftover = tempDir
+        .listSync()
+        .where((e) => e.path.contains('.upload-'))
+        .toList();
+    expect(leftover, isEmpty);
   });
 
-  test('rejects path-traversal ids', () async {
-    await expectLater(
-      store.write('../evil', Uint8List.fromList([1])),
-      throwsA(isA<ArgumentError>()),
-    );
+  test('quarantine renames the archive and is a no-op when absent', () async {
+    await store.quarantineArchive(); // no archive: nothing happens
+    expect(await store.readArchive(), isNull);
+
+    await store.writeArchiveAtomic(Uint8List.fromList([5]));
+    await store.quarantineArchive();
+    expect(await store.readArchive(), isNull);
+    final quarantined = tempDir
+        .listSync()
+        .whereType<File>()
+        .where((f) => f.path.contains('archive.corrupted-'))
+        .toList();
+    expect(quarantined, hasLength(1));
+    expect(await quarantined.single.readAsBytes(), [5]);
+  });
+
+  test('deleteLegacyEntries reports whether anything was removed', () async {
+    expect(await store.deleteLegacyEntries(), isFalse);
+
+    final legacy = Directory('${tempDir.path}/entries');
+    await legacy.create();
+    await File('${legacy.path}/some-id.json').writeAsBytes([1]);
+    expect(await store.deleteLegacyEntries(), isTrue);
+    expect(legacy.existsSync(), isFalse);
+
+    // Gone now: second call reports nothing removed.
+    expect(await store.deleteLegacyEntries(), isFalse);
   });
 
   test('normalizeVaultBasePath enforces leading slash, strips trailing', () {

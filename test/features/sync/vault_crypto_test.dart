@@ -23,13 +23,13 @@ void main() {
 
         final json = descriptor.toJson();
         expect(json['format'], 'ovault');
-        expect(json['v'], 1);
+        expect(json['v'], 2);
         final kdf = json['kdf']! as Map<String, Object?>;
         expect(kdf['algo'], 'scrypt');
         expect(kdf['N'], 1024);
         expect(kdf['r'], 8);
         expect(kdf['p'], 1);
-        // OVault v1 pins production-strength scrypt parameters as defaults.
+        // OVault pins production-strength scrypt parameters as defaults.
         expect(VaultCrypto.defaultKdfN, 32768);
         expect(VaultCrypto.defaultKdfR, 8);
         expect(VaultCrypto.defaultKdfP, 1);

@@ -311,11 +311,12 @@ class _SyncSectionState extends ConsumerState<SyncSection> {
 
   static String _progressText(SyncProgress? progress) {
     if (progress == null) return 'Syncing…';
-    final verb = switch (progress.phase) {
-      SyncPhase.push => 'Pushing',
-      SyncPhase.pull => 'Pulling',
+    return switch (progress.phase) {
+      SyncPhase.downloading => 'Downloading vault…',
+      SyncPhase.merging => 'Merging ${progress.processed}/${progress.total}…',
+      SyncPhase.uploading => 'Uploading archive…',
+      SyncPhase.cleaningUp => 'Removing old format…',
     };
-    return '$verb ${progress.processed}/${progress.total}…';
   }
 
   static String _statusText(SyncUiState state) {

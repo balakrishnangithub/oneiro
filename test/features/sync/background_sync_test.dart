@@ -48,8 +48,8 @@ void main() {
     );
 
     expect(await runBackgroundSync(db: db, secure: secure), isTrue);
-    // Nothing was uploaded: the entries folder was never created.
-    expect(Directory('${vaultDir.path}/entries').existsSync(), isFalse);
+    // Nothing was uploaded: the archive was never created.
+    expect(File('${vaultDir.path}/archive.bin').existsSync(), isFalse);
   });
 
   test(
@@ -76,16 +76,16 @@ void main() {
 
       expect(await runBackgroundSync(db: db, secure: secure), isTrue);
 
-      // Both entries were encrypted and uploaded; the descriptor exists.
-      final entriesDir = Directory('${vaultDir.path}/entries');
-      expect(entriesDir.listSync().whereType<File>().length, 2);
+      // Everything went up in a single encrypted archive; descriptor exists.
+      final archiveFile = File('${vaultDir.path}/archive.bin');
+      expect(archiveFile.existsSync(), isTrue);
       expect(File('${vaultDir.path}/vault.json').existsSync(), isTrue);
       expect(await settingsRepository.lastSyncAt(), isNotNull);
 
-      // Dirty flags cleared: a second run uploads nothing new.
-      final before = entriesDir.listSync().length;
+      // Nothing changed: a second run leaves the archive untouched.
+      final archiveBytes = await archiveFile.readAsBytes();
       expect(await runBackgroundSync(db: db, secure: secure), isTrue);
-      expect(entriesDir.listSync().length, before);
+      expect(await archiveFile.readAsBytes(), archiveBytes);
     },
   );
 

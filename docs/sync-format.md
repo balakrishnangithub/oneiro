@@ -1,4 +1,4 @@
-# OVault v1 — Oneiro Encrypted Sync Format
+# OVault v2 — Oneiro Encrypted Sync Format
 
 OVault is Oneiro's end-to-end encrypted synchronization format. Everything is
 encrypted **on the device before upload**; the storage server only ever sees
@@ -14,20 +14,22 @@ Cryptomator, but it is an independent, simpler format.
 ```
 <basePath>/                 (default: /oneiro-vault on WebDAV, or any local folder)
 ├── vault.json              unencrypted descriptor (no secrets)
-└── entries/
-    └── <entry-uuid>.json   one encrypted envelope per journal entry
+└── archive.bin             one encrypted envelope holding ALL entries
 ```
 
-File names are entry UUIDs; they reveal nothing about content. Deletions are
-propagated as encrypted tombstones (see below), so the set of file names only
-leaks the approximate number of journal entries over time.
+v2 stores the whole journal in a single archive instead of v1's per-entry
+files. Dreams are small texts, so one compressed upload is dramatically
+faster than hundreds of WebDAV round-trips, leaks far less metadata (no
+per-entry file names, sizes or timestamps), and keeps conflict handling
+just as granular — the merge happens entry-by-entry **before** upload, not
+by overwriting whole files.
 
 ## `vault.json` — descriptor
 
 ```json
 {
   "format": "ovault",
-  "v": 1,
+  "v": 2,
   "kdf": { "algo": "scrypt", "N": 32768, "r": 8, "p": 1, "salt": "<base64>" },
   "check": "<base64>"
 }
@@ -40,6 +42,9 @@ leaks the approximate number of journal entries over time.
   fails cleanly instead of producing garbage.
 
 The descriptor contains no secret material and is safe to store in plaintext.
+The `v` field is the **format** version: v1 (per-entry files) clients reject
+v2 descriptors and vice versa, so a mismatched client fails loudly instead of
+silently misreading the vault.
 
 ## Key derivation
 
@@ -51,75 +56,109 @@ The KDF parameters are recorded in the descriptor and honored at unlock time,
 so they can be raised in future format revisions. (Tests use a much smaller
 `N`; the value above is the pinned production default.)
 
-## Entry envelope (`entries/<uuid>.json`)
+## `archive.bin` — the encrypted archive
 
-UTF-8 JSON:
+Envelope, UTF-8 JSON:
 
 ```json
-{ "v": 1, "nonce": "<base64 12 bytes>", "ct": "<base64>" }
+{ "v": 2, "nonce": "<base64 12 bytes>", "ct": "<base64>" }
 ```
 
-- A **fresh random 96-bit nonce** is generated for every encryption.
+- A **fresh random 96-bit nonce** is generated for every upload.
 - `ct` = `AES-256-GCM(masterKey, nonce, plaintext)` with the 16-byte
   authentication tag appended. Any tampering with `nonce` or `ct` fails
   authentication on decrypt.
 
 ### Plaintext (before encryption)
 
-Canonical JSON (fixed key order):
+The plaintext is **gzip-compressed JSON** (compression before encryption —
+ciphertext does not compress). Decompressed, it is canonical JSON with
+entries sorted by id:
 
 ```json
 {
-  "id": "<uuid>",
-  "dreamDate": 1778457600000,
-  "body": "free text, may contain newlines",
-  "isLucid": false,
-  "createdAt": 1000,
-  "updatedAt": 2000,
-  "deletedAt": null
+  "v": 2,
+  "entries": [
+    {
+      "id": "<uuid>",
+      "dreamDate": 1778457600000,
+      "body": "free text, may contain newlines",
+      "isLucid": false,
+      "createdAt": 1000,
+      "updatedAt": 2000,
+      "deletedAt": null
+    }
+  ]
 }
 ```
 
 All timestamps are Unix epoch milliseconds. `dreamDate` is day-granular.
 `deletedAt != null` marks a **tombstone**: the entry was deleted on some
-device; tombstones replicate deletions to other devices.
+device; tombstones replicate deletions to other devices. The archive carries
+every entry including tombstones, so it is a complete snapshot of the
+journal's sync state.
+
+### Atomic upload
+
+`archive.bin` is always replaced atomically: the client uploads to a unique
+temporary name (`archive.bin.upload-<uuid>`) and then renames (WebDAV
+`MOVE`, or `rename(2)` for local folders) over `archive.bin`. A crash or
+network drop mid-upload therefore never truncates the archive other devices
+rely on; a leftover temp file is harmless.
 
 ## Synchronization algorithm
 
-One entry = one file. Conflict resolution is **last-write-wins** by
-`updatedAt` (documented, deterministic; no merge of conflicting edits).
+Conflict resolution is **last-write-wins** by `updatedAt` (documented,
+deterministic; no merge of conflicting edits). Each device keeps a local
+`sync_state` table: `entryId → lastSyncedUpdatedAt`.
 
-Each device keeps a local `sync_state` table:
-`entryId → lastSyncedUpdatedAt`.
+1. **Download** — fetch `archive.bin` if present and decrypt it into the
+   remote entry set. A corrupted archive is **quarantined** (renamed to
+   `archive.corrupted-<timestamp>.bin`, never overwritten), reported as a
+   warning, and treated as empty; the merge below then rebuilds it from
+   local state, and other devices re-merge anything only they had on their
+   next sync.
+2. **Merge** — walk the union of local and remote ids:
+   - remote missing → the local entry joins the upload set;
+   - local missing → the remote payload is applied locally (upsert or
+     soft-delete), then recorded in sync-state;
+   - both present → the side with the newer `updatedAt` wins; a remote win
+     is applied locally, a local win joins the upload set. Equal
+     `updatedAt` is treated as identical content. When both sides changed
+     since `lastSyncedUpdatedAt`, the run counts a resolved conflict.
+3. **Upload** — only when the merged state differs from the remote archive:
+   re-encode the full merged state (winners, tombstones included), gzip,
+   encrypt and upload atomically. Pure-pull and no-change runs upload
+   nothing. Local winners are recorded in sync-state only after the upload
+   succeeds.
+4. **Cleanup** — once a v2 archive exists remotely, the legacy v1
+   `entries/` folder (if any) is removed.
 
-1. **Push** — every local entry (including tombstones) whose `updatedAt`
-   differs from `lastSyncedUpdatedAt` is encrypted and uploaded; sync-state is
-   updated afterwards.
-2. **Pull** — every remote file whose entry is unknown locally, or whose
-   decrypted `updatedAt` is newer than the local row's, is applied locally
-   (upsert or soft-delete), then recorded in sync-state.
-3. Per-file failures (corruption, I/O errors, undecryptable files) never abort
-   the run; they are collected into `SyncReport.warnings` and the entry stays
-   dirty for the next run.
+Because every sync merges full state and uploads are atomic, an interrupted
+sync is always safe: whatever was applied locally is recorded in sync-state,
+and the next run (manual, app-start, or background) converges to the same
+result.
 
 ## Threat model (honest summary)
 
 **Protected:** entry contents, lucidity flags and all timestamps are encrypted
 client-side with a key derived only from the user's passphrase. The server
 operator, anyone with read access to the WebDAV folder, and network
-eavesdroppers see only opaque envelopes.
+eavesdroppers see only two files, one of them an opaque envelope. Per-entry
+metadata (which entry changed when) is no longer visible at all — only the
+archive's size and modification time.
 
 **Not protected / out of scope:**
 
-- *Metadata*: file count and rough vault size, access times visible to the
-  server.
+- *Metadata*: rough journal size and archive modification times.
 - *Local device security*: the local journal database is unencrypted on disk
   (use the app's PIN lock and OS-level device encryption). If "remember
   passphrase" is enabled, the passphrase is stored in the platform credential
   vault (Android Keystore-backed).
 - *Passphrase loss*: there is **no recovery**. Losing the passphrase means
   losing the remote copy.
-- *Rollback/reordering attacks* by a malicious server (no signed history
-  chain in v1).
+- *Rollback attacks* by a malicious server (no signed history chain in v2).
+  Last-write-wins on full state limits the damage to what a rollback itself
+  contains; the next honest sync re-merges newer local data.
 - Password strength: security reduces to passphrase entropy; scrypt slows but
   does not prevent brute-force of weak passphrases.

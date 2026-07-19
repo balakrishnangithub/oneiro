@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:path/path.dart' as p;
+import 'package:uuid/uuid.dart';
 
 import 'remote_vault_store.dart';
 
@@ -19,21 +20,15 @@ class LocalDirectoryVaultStore implements RemoteVaultStore {
 
   final Directory _root;
 
-  static final _safeId = RegExp(r'^[A-Za-z0-9._-]+$');
+  static const _uuid = Uuid();
 
   File get _descriptorFile => File(p.join(_root.path, 'vault.json'));
-  Directory get _entriesDir => Directory(p.join(_root.path, 'entries'));
-
-  File _entryFile(String id) {
-    if (!_safeId.hasMatch(id)) {
-      throw ArgumentError.value(id, 'id', 'unsafe vault entry id');
-    }
-    return File(p.join(_entriesDir.path, '$id.json'));
-  }
+  File get _archiveFile => File(p.join(_root.path, 'archive.bin'));
+  Directory get _legacyEntriesDir => Directory(p.join(_root.path, 'entries'));
 
   @override
   Future<void> ensureStructure() async {
-    await _entriesDir.create(recursive: true);
+    await _root.create(recursive: true);
   }
 
   @override
@@ -54,23 +49,9 @@ class LocalDirectoryVaultStore implements RemoteVaultStore {
   }
 
   @override
-  Future<List<String>> listEntryIds() async {
-    if (!await _entriesDir.exists()) return const [];
-    final ids = <String>[];
-    await for (final entity in _entriesDir.list()) {
-      if (entity is! File) continue;
-      final name = p.basename(entity.path);
-      if (!name.endsWith('.json')) continue;
-      ids.add(name.substring(0, name.length - '.json'.length));
-    }
-    ids.sort();
-    return ids;
-  }
-
-  @override
-  Future<Uint8List?> read(String id) async {
+  Future<Uint8List?> readArchive() async {
     try {
-      return await _entryFile(id).readAsBytes();
+      return await _archiveFile.readAsBytes();
     } on PathNotFoundException {
       return null;
     } on FileSystemException {
@@ -79,19 +60,27 @@ class LocalDirectoryVaultStore implements RemoteVaultStore {
   }
 
   @override
-  Future<void> write(String id, Uint8List bytes) async {
+  Future<void> writeArchiveAtomic(Uint8List bytes) async {
     await ensureStructure();
-    await _entryFile(id).writeAsBytes(bytes, flush: true);
+    final temp = File(p.join(_root.path, 'archive.bin.upload-${_uuid.v4()}'));
+    await temp.writeAsBytes(bytes, flush: true);
+    // Rename within the same directory is atomic on every supported OS.
+    await temp.rename(_archiveFile.path);
   }
 
   @override
-  Future<void> delete(String id) async {
-    try {
-      await _entryFile(id).delete();
-    } on PathNotFoundException {
-      // Already gone — deletion is idempotent.
-    } on FileSystemException {
-      // Already gone — deletion is idempotent.
-    }
+  Future<void> quarantineArchive() async {
+    if (!await _archiveFile.exists()) return;
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+    await _archiveFile.rename(
+      p.join(_root.path, 'archive.corrupted-$stamp.bin'),
+    );
+  }
+
+  @override
+  Future<bool> deleteLegacyEntries() async {
+    if (!await _legacyEntriesDir.exists()) return false;
+    await _legacyEntriesDir.delete(recursive: true);
+    return true;
   }
 }

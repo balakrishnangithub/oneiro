@@ -1,5 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:drift/drift.dart' show driftRuntimeOptions;
 import 'package:flutter_test/flutter_test.dart';
@@ -51,6 +50,8 @@ void main() {
   late _Device deviceA;
   late _Device deviceB;
 
+  File archiveFile() => File('${vaultDir.path}/archive.bin');
+
   setUp(() async {
     vaultDir = await Directory.systemTemp.createTemp('oneiro_sync_e2e');
     deviceA = _Device(LocalDirectoryVaultStore(vaultDir.path));
@@ -73,12 +74,15 @@ void main() {
     ];
     final pushReport = await deviceA.engine.sync();
     expect(pushReport.pushed, count);
+    expect(pushReport.archiveUploaded, isTrue);
     expect(pushReport.needsUnlock, isFalse);
 
     await deviceB.engine.unlockOrCreateVault(passphrase, kdfN: 256);
     final pullReport = await deviceB.engine.sync();
     expect(pullReport.pulled, count);
     expect(pullReport.pushed, 0);
+    // Pure pull: the archive already held everything B needed.
+    expect(pullReport.archiveUploaded, isFalse);
     return entries;
   }
 
@@ -119,17 +123,23 @@ void main() {
     expect(onB.firstWhere((e) => e.id == entries[0].id).createdAt, 1000);
   });
 
-  test('dirty tracking: unchanged entries are not re-pushed', () async {
+  test('dirty tracking: an unchanged vault is not re-uploaded', () async {
     await seedBothDevices(count: 2);
+    final archiveAfterSeed = await archiveFile().readAsBytes();
 
     final againA = await deviceA.engine.sync();
     expect(againA.pushed, 0);
     expect(againA.pulled, 0);
     expect(againA.skipped, 2);
+    expect(againA.archiveUploaded, isFalse);
 
     final againB = await deviceB.engine.sync();
     expect(againB.pushed, 0);
     expect(againB.pulled, 0);
+    expect(againB.archiveUploaded, isFalse);
+
+    // Byte-identical: no rewrite happened at all.
+    expect(await archiveFile().readAsBytes(), archiveAfterSeed);
   });
 
   test('edit on B propagates back to A', () async {
@@ -140,10 +150,12 @@ void main() {
 
     final pushB = await deviceB.engine.sync();
     expect(pushB.pushed, 1);
+    expect(pushB.archiveUploaded, isTrue);
 
     final pullA = await deviceA.engine.sync();
     expect(pullA.pulled, 1);
     expect(pullA.pushed, 0);
+    expect(pullA.archiveUploaded, isFalse);
     final onA = await deviceA.repository.getById(entries[0].id);
     expect(onA!.body, 'edited on B');
     expect(onA.updatedAt, 2000);
@@ -218,9 +230,10 @@ void main() {
     expect(tombstone!.deletedAt, 2000);
     expect(tombstone.updatedAt, 2000);
 
-    // And the tombstone itself is now in sync (no further pushes).
+    // And the tombstone itself is now in sync (no further uploads).
     final again = await deviceA.engine.sync();
     expect(again.pushed, 0);
+    expect(again.archiveUploaded, isFalse);
   });
 
   test('wipe-and-restore: a fresh device rebuilds the journal', () async {
@@ -236,6 +249,7 @@ void main() {
     final report = await restored.engine.sync();
 
     expect(report.pulled, 3); // two live entries + one tombstone
+    expect(report.archiveUploaded, isFalse); // pure pull: nothing to upload
     final active = await restored.repository.getAllActive();
     expect(active.map((e) => e.id).toSet(), {entries[0].id, entries[1].id});
     expect(
@@ -250,52 +264,67 @@ void main() {
     expect(settled.skipped, 3);
   });
 
-  test(
-    'corrupted remote file warns, sync continues, entry stays dirty',
-    () async {
-      final entries = await seedBothDevices(count: 2);
-      final corrupted = entries[0];
-      final clean = entries[1];
+  test('corrupted archive is quarantined, rebuilt locally, then self-heals '
+      'through the other device', () async {
+    final entries = await seedBothDevices(count: 2);
+    final clean = entries[1];
 
-      // Corrupt one remote file and make a legit remote change to the other.
-      await deviceA.store.write(
-        corrupted.id,
-        Uint8List.fromList('garbage, not json'.codeUnits),
-      );
-      deviceB.nowMs = 2000;
-      await deviceB.repository.updateEntry(
-        (await deviceB.repository.getById(clean.id))!.copyWith(body: 'B edit'),
-      );
-      await deviceB.engine.sync();
+    // B makes a legitimate edit and uploads it.
+    deviceB.nowMs = 2000;
+    await deviceB.repository.updateEntry(
+      (await deviceB.repository.getById(clean.id))!.copyWith(body: 'B edit'),
+    );
+    await deviceB.engine.sync();
 
-      final report = await deviceA.engine.sync();
-      expect(report.warnings, hasLength(1));
-      expect(report.warnings.single, contains(corrupted.id));
-      expect(report.pulled, 1); // the clean entry still replicated
-      expect((await deviceA.repository.getById(clean.id))!.body, 'B edit');
+    // The archive gets corrupted on the server (bit rot, bad client...).
+    await archiveFile().writeAsString('garbage, not an envelope');
 
-      // The corrupted entry was not marked synced, so a later run retries it.
-      final states = await deviceA.db.syncStateDao.getLastSyncedMap();
-      expect(states[corrupted.id], 1000);
-      expect(states[clean.id], 2000);
+    // A syncs: the archive is unreadable → quarantined, NOT overwritten
+    // silently; A rebuilds from its own state and warns the user.
+    final report = await deviceA.engine.sync();
+    expect(report.warnings, hasLength(1));
+    expect(report.warnings.single, contains('unreadable'));
+    expect(report.archiveUploaded, isTrue);
+    expect(archiveFile().existsSync(), isTrue);
+    expect(
+      vaultDir.listSync().whereType<File>().where(
+        (f) => f.path.contains('archive.corrupted-'),
+      ),
+      hasLength(1),
+    );
 
-      // A dirty local entry is NOT clobbered over a corrupted remote file.
-      deviceA.nowMs = 3000;
-      await deviceA.repository.updateEntry(
-        (await deviceA.repository.getById(
-          corrupted.id,
-        ))!.copyWith(body: 'A local edit'),
-      );
-      final blocked = await deviceA.engine.sync();
-      expect(blocked.warnings, isNotEmpty);
-      expect(blocked.pushed, 0);
-      // The corrupted remote bytes are still there, untouched.
-      final raw = await deviceA.store.read(corrupted.id);
-      expect(String.fromCharCodes(raw!), 'garbage, not json');
-    },
-  );
+    // B's edit survived on B; B's next sync re-merges it into the rebuilt
+    // archive (B's version is newer than A's rebuilt content).
+    final healB = await deviceB.engine.sync();
+    expect(healB.archiveUploaded, isTrue);
+    final healA = await deviceA.engine.sync();
+    expect(healA.pulled, 1);
+    expect((await deviceA.repository.getById(clean.id))!.body, 'B edit');
+  });
 
-  test('progress reports push and pull phase totals entry by entry', () async {
+  test('legacy v1 entries folder is removed once an archive exists', () async {
+    // Simulate a vault that used the old per-entry format.
+    final legacy = Directory('${vaultDir.path}/entries');
+    await legacy.create(recursive: true);
+    await File('${legacy.path}/old-id.json').writeAsString('old envelope');
+
+    await deviceA.engine.unlockOrCreateVault(passphrase, kdfN: 256);
+    await deviceA.addEntry('dream');
+
+    final events = <SyncProgress>[];
+    await deviceA.engine.sync(onProgress: events.add);
+
+    // The old folder is gone and the cleanup phase was reported.
+    expect(legacy.existsSync(), isFalse);
+    expect(events.map((e) => e.phase), contains(SyncPhase.cleaningUp));
+
+    // Steady state: no legacy folder, no cleanup phase anymore.
+    final steady = <SyncProgress>[];
+    await deviceA.engine.sync(onProgress: steady.add);
+    expect(steady.map((e) => e.phase), isNot(contains(SyncPhase.cleaningUp)));
+  });
+
+  test('progress walks download → merge → upload with entry counts', () async {
     await deviceA.engine.unlockOrCreateVault(passphrase, kdfN: 256);
     for (var i = 0; i < 3; i++) {
       await deviceA.addEntry('dream $i');
@@ -305,33 +334,40 @@ void main() {
     final pushReport = await deviceA.engine.sync(onProgress: pushEvents.add);
     expect(pushReport.pushed, 3);
     expect(pushEvents.map((e) => (e.phase, e.processed, e.total)).toList(), [
-      (SyncPhase.push, 1, 3),
-      (SyncPhase.push, 2, 3),
-      (SyncPhase.push, 3, 3),
+      (SyncPhase.downloading, 0, 1),
+      (SyncPhase.downloading, 1, 1),
+      (SyncPhase.merging, 1, 3),
+      (SyncPhase.merging, 2, 3),
+      (SyncPhase.merging, 3, 3),
+      (SyncPhase.uploading, 0, 1),
+      (SyncPhase.uploading, 1, 1),
     ]);
 
-    // A second device pulling the same vault gets pull-phase totals.
+    // A second device pulling the same vault merges but uploads nothing.
     await deviceB.engine.unlockOrCreateVault(passphrase, kdfN: 256);
     final pullEvents = <SyncProgress>[];
     final pullReport = await deviceB.engine.sync(onProgress: pullEvents.add);
     expect(pullReport.pulled, 3);
     expect(pullEvents.map((e) => (e.phase, e.processed, e.total)).toList(), [
-      (SyncPhase.pull, 1, 3),
-      (SyncPhase.pull, 2, 3),
-      (SyncPhase.pull, 3, 3),
+      (SyncPhase.downloading, 0, 1),
+      (SyncPhase.downloading, 1, 1),
+      (SyncPhase.merging, 1, 3),
+      (SyncPhase.merging, 2, 3),
+      (SyncPhase.merging, 3, 3),
     ]);
 
-    // Nothing dirty locally: no push work, but the pull phase still walks
-    // every remote file to confirm agreement.
+    // Nothing dirty anywhere: merge confirms agreement, no upload phase.
     final idleEvents = <SyncProgress>[];
     final idleReport = await deviceA.engine.sync(onProgress: idleEvents.add);
     expect(idleReport.pushed, 0);
     expect(idleReport.pulled, 0);
     expect(idleReport.skipped, 3);
     expect(idleEvents.map((e) => (e.phase, e.processed, e.total)).toList(), [
-      (SyncPhase.pull, 1, 3),
-      (SyncPhase.pull, 2, 3),
-      (SyncPhase.pull, 3, 3),
+      (SyncPhase.downloading, 0, 1),
+      (SyncPhase.downloading, 1, 1),
+      (SyncPhase.merging, 1, 3),
+      (SyncPhase.merging, 2, 3),
+      (SyncPhase.merging, 3, 3),
     ]);
   });
 }

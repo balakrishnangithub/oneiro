@@ -2,35 +2,38 @@ import 'package:drift/drift.dart';
 
 import '../../../data/db/oneiro_database.dart';
 import '../data/remote_vault_store.dart';
+import 'crypto/vault_archive.dart';
 import 'crypto/vault_crypto.dart';
 import 'synced_entry.dart';
 
 /// Outcome of one [SyncEngine.sync] run.
 ///
-/// Per-file problems (corrupted remote envelopes, unreadable payloads,
-/// transient I/O failures) never abort the run; they are collected in
-/// [warnings] and the affected entry simply stays dirty for the next run.
+/// A corrupted remote archive never aborts the run silently: it is
+/// quarantined, reported in [warnings], and rebuilt from local data.
 class SyncReport {
   SyncReport({this.needsUnlock = false, this.syncedAt});
 
-  /// Envelopes uploaded to the vault.
+  /// Locally changed entries whose content went up in the uploaded archive.
   int pushed = 0;
 
-  /// Remote payloads applied to the local database.
+  /// Remote payloads applied to the local database during the merge.
   int pulled = 0;
 
   /// Entries changed on BOTH sides since the last sync; resolved
   /// last-write-wins by `updatedAt` (see `docs/sync-format.md`).
   int conflictsResolved = 0;
 
-  /// Entries looked at but already in agreement.
+  /// Entries found already in agreement during the merge.
   int skipped = 0;
+
+  /// Whether the merged archive was (re)uploaded this run.
+  bool archiveUploaded = false;
 
   /// True when sync was requested but the vault is locked (no passphrase in
   /// memory). Nothing else in the report is meaningful then.
   bool needsUnlock;
 
-  /// Human-readable per-file problems encountered during the run.
+  /// Human-readable problems encountered during the run.
   final List<String> warnings = [];
 
   /// When the run finished (null when [needsUnlock]).
@@ -43,16 +46,23 @@ class SyncReport {
       ? 'SyncReport(needsUnlock)'
       : 'SyncReport(pushed: $pushed, pulled: $pulled, '
             'conflicts: $conflictsResolved, skipped: $skipped, '
+            'archiveUploaded: $archiveUploaded, '
             'warnings: ${warnings.length})';
 }
 
-/// Which half of a sync run is currently processing entries.
+/// Which step of a sync run is currently active.
 enum SyncPhase {
-  /// Uploading locally changed entries (after last-write-wins checks).
-  push,
+  /// Fetching and decrypting the remote archive.
+  downloading,
 
-  /// Downloading remote files the push phase did not touch.
-  pull,
+  /// Merging remote entries with the local database (per-entry counts).
+  merging,
+
+  /// Building and atomically uploading the merged archive.
+  uploading,
+
+  /// Removing legacy v1 per-entry files after a successful migration.
+  cleaningUp,
 }
 
 /// Live progress of one [SyncEngine.sync] run.
@@ -63,37 +73,40 @@ class SyncProgress {
     required this.total,
   });
 
-  /// The half of the run currently working.
+  /// The step currently working.
   final SyncPhase phase;
 
-  /// Entries handled so far in this phase (1-based once work starts).
+  /// Units handled so far in this phase (1-based once work starts).
   final int processed;
 
-  /// Entries to handle in this phase.
+  /// Units to handle in this phase. 1 for whole-file phases
+  /// (download/upload/cleanup), the merged-entry count for
+  /// [SyncPhase.merging].
   final int total;
 }
 
-/// Replicates the local journal with an encrypted OVault remote.
+/// Replicates the local journal with an encrypted OVault v2 remote.
 ///
 /// The engine is pure Dart + drift: it talks to any [RemoteVaultStore] and
 /// holds the unlocked [VaultCrypto] only in memory. Sync algorithm
 /// (documented in `docs/sync-format.md`):
 ///
-/// 1. **Push phase** — every local entry whose `updatedAt` differs from
-///    `sync_state.lastSyncedUpdatedAt` (tombstones included) is compared
-///    against the remote payload. If the remote side is newer, it wins and
-///    is applied locally instead; otherwise the local entry is encrypted
-///    and uploaded.
-/// 2. **Pull phase** — remote files not touched by the push phase are
-///    decrypted and applied when the local entry is missing or older.
-/// 3. **Bookkeeping** — every successfully processed entry records the
-///    winning `updatedAt` in `sync_state`, so unchanged entries are never
-///    re-pushed.
+/// 1. **Download** — fetch `archive.bin` (if any) and decrypt it into the
+///    remote entry set. A corrupted archive is quarantined and treated as
+///    empty, never overwritten blindly.
+/// 2. **Merge** — walk the union of local and remote ids. The side with the
+///    newer `updatedAt` wins (last-write-wins); remote winners are applied
+///    to the local database immediately.
+/// 3. **Upload** — only when the merged state differs from the remote
+///    archive, re-encode the full local state (winners, tombstones
+///    included), encrypt it and upload atomically. Pure-pull runs and
+///    no-change runs upload nothing.
+/// 4. **Cleanup** — once a v2 archive exists remotely, legacy v1 per-entry
+///    files are removed.
 ///
-/// **Conflict policy: last-write-wins by `updatedAt`.** When both sides
-/// changed an entry since the last sync, the version with the larger
-/// `updatedAt` is kept on both sides. Equal `updatedAt` is treated as
-/// identical content.
+/// **Conflict policy: last-write-wins by `updatedAt`.** Equal `updatedAt`
+/// is treated as identical content. Because every sync merges the full
+/// state, a lost upload race heals itself on the next run.
 class SyncEngine {
   SyncEngine({
     required OneiroDatabase db,
@@ -155,11 +168,10 @@ class SyncEngine {
     return crypto;
   }
 
-  /// Runs one full push+pull replication. Never throws on per-file
-  /// corruption or I/O problems; see [SyncReport.warnings].
+  /// Runs one full download+merge+upload replication.
   ///
-  /// [onProgress] is called after every processed entry with the running
-  /// phase totals, so callers can show "Pushing 45/377…" style feedback.
+  /// [onProgress] fires at phase boundaries and per merged entry, so callers
+  /// can show "Merging 45/377…" style feedback.
   Future<SyncReport> sync({
     void Function(SyncProgress progress)? onProgress,
   }) async {
@@ -171,153 +183,160 @@ class SyncEngine {
 
     await _store.ensureStructure();
 
+    // --- 1. Download -------------------------------------------------------
+    onProgress?.call(
+      const SyncProgress(phase: SyncPhase.downloading, processed: 0, total: 1),
+    );
+    final archiveBytes = await _store.readArchive();
+    var remoteById = <String, SyncedEntry>{};
+    var archivePresent = archiveBytes != null;
+    if (archiveBytes != null) {
+      try {
+        remoteById = {
+          for (final entry in VaultArchive.decode(
+            await crypto.decryptBytes(archiveBytes),
+          ))
+            entry.id: entry,
+        };
+      } catch (error) {
+        // Never overwrite unknown data: move the unreadable archive aside
+        // and rebuild from local state below.
+        report.warnings.add(
+          'remote archive was unreadable ($error) — moved aside and '
+          'rebuilt from local data',
+        );
+        try {
+          await _store.quarantineArchive();
+        } catch (quarantineError) {
+          report.warnings.add(
+            'could not quarantine the corrupted archive: $quarantineError',
+          );
+        }
+        archivePresent = false;
+      }
+    }
+    onProgress?.call(
+      const SyncProgress(phase: SyncPhase.downloading, processed: 1, total: 1),
+    );
+
+    // --- 2. Merge ----------------------------------------------------------
     final localEntries = await _db.dreamEntryDao.getAllIncludingDeleted();
     final localById = {for (final entry in localEntries) entry.id: entry};
     final lastSyncedById = await _db.syncStateDao.getLastSyncedMap();
-    final remoteIds = await _store.listEntryIds();
-    final remoteIdSet = remoteIds.toSet();
 
-    // Entries handled by the push phase; the pull phase skips them.
-    final processed = <String>{};
+    final unionIds = <String>{...localById.keys, ...remoteById.keys}.toList()
+      ..sort();
 
-    // --- Push phase: dirty local entries (including tombstones) -----------
-    final dirty = [
-      for (final entry in localEntries)
-        if (lastSyncedById[entry.id] == null ||
-            lastSyncedById[entry.id] != entry.updatedAt)
-          entry,
-    ];
-    var pushDone = 0;
-    for (final entry in dirty) {
-      final lastSynced = lastSyncedById[entry.id];
-      processed.add(entry.id);
+    final winners = <String, SyncedEntry>{};
+    var uploadNeeded = false;
+    var merged = 0;
+    for (final id in unionIds) {
+      final local = localById[id];
+      final remote = remoteById[id];
+      final lastSynced = lastSyncedById[id];
+      final localDirty = local != null && lastSynced != local.updatedAt;
 
-      // Read the remote side first so last-write-wins never blindsides a
-      // newer remote version. An unreadable remote file skips the entry
-      // entirely rather than clobbering unknown data.
-      SyncedEntry? remote;
-      var skippedForUnreadableRemote = false;
-      if (remoteIdSet.contains(entry.id)) {
-        final read = await _readRemote(crypto, entry.id, report);
-        if (read.failed) {
-          skippedForUnreadableRemote = true;
-        } else {
-          remote = read.payload;
-        }
-      }
-
-      if (skippedForUnreadableRemote) {
-        // Deliberately no-op; the entry stays dirty for the next run.
-      } else if (remote != null && remote.updatedAt > entry.updatedAt) {
-        // Remote wins (last-write-wins).
+      if (local == null && remote != null) {
+        // Unknown locally: apply (a tombstone payload inserts a tombstone
+        // row, so the deletion stays durable).
+        winners[id] = remote;
         await _applyRemote(remote);
-        await _db.syncStateDao.markSynced(entry.id, remote.updatedAt);
+        await _db.syncStateDao.markSynced(id, remote.updatedAt);
         report.pulled++;
-        if (remote.updatedAt != lastSynced) report.conflictsResolved++;
-      } else if (remote != null && remote.updatedAt == entry.updatedAt) {
-        await _db.syncStateDao.markSynced(entry.id, entry.updatedAt);
-        report.skipped++;
-      } else {
-        // Local wins (remote absent or older).
-        try {
-          final envelope = await crypto.encryptJson(
-            SyncedEntry.fromEntry(entry).toJson(),
-          );
-          await _store.write(entry.id, envelope);
-          await _db.syncStateDao.markSynced(entry.id, entry.updatedAt);
-          report.pushed++;
-          if (remote != null && remote.updatedAt != lastSynced) {
-            report.conflictsResolved++;
+      } else if (local != null && remote == null) {
+        // Only local has it: it must reach the archive.
+        winners[id] = SyncedEntry.fromEntry(local);
+        uploadNeeded = true;
+        if (localDirty) report.pushed++;
+      } else if (local != null && remote != null) {
+        if (remote.updatedAt > local.updatedAt) {
+          // Remote wins (last-write-wins).
+          winners[id] = remote;
+          await _applyRemote(remote);
+          await _db.syncStateDao.markSynced(id, remote.updatedAt);
+          report.pulled++;
+          if (localDirty) report.conflictsResolved++;
+        } else {
+          winners[id] = SyncedEntry.fromEntry(local);
+          if (remote.updatedAt < local.updatedAt) {
+            // Local wins: the archive must be refreshed.
+            uploadNeeded = true;
+            if (localDirty) report.pushed++;
+            if (lastSynced != null && lastSynced != remote.updatedAt) {
+              report.conflictsResolved++;
+            }
+          } else {
+            // Identical timestamps: treated as identical content.
+            report.skipped++;
+            if (lastSynced != local.updatedAt) {
+              await _db.syncStateDao.markSynced(id, local.updatedAt);
+            }
           }
-        } catch (error) {
-          report.warnings.add('could not push entry ${entry.id}: $error');
         }
       }
-      pushDone++;
+      merged++;
       onProgress?.call(
         SyncProgress(
-          phase: SyncPhase.push,
-          processed: pushDone,
-          total: dirty.length,
+          phase: SyncPhase.merging,
+          processed: merged,
+          total: unionIds.length,
         ),
       );
     }
+    // A quarantined (or never created) archive must be rebuilt whenever the
+    // merged state has anything worth storing.
+    if (!archivePresent && winners.isNotEmpty) uploadNeeded = true;
 
-    // --- Pull phase: remote files the push phase did not handle -----------
-    final pullIds = [
-      for (final id in remoteIds)
-        if (!processed.contains(id)) id,
-    ];
-    var pullDone = 0;
-    for (final id in pullIds) {
-      final read = await _readRemote(crypto, id, report);
-      final payload = read.failed ? null : read.payload;
-      // A file that vanished between listing and reading (or failed to
-      // read) still counts as processed for progress purposes.
-      if (payload != null) {
+    // --- 3. Upload ---------------------------------------------------------
+    var archiveUploaded = false;
+    if (uploadNeeded) {
+      onProgress?.call(
+        const SyncProgress(phase: SyncPhase.uploading, processed: 0, total: 1),
+      );
+      final envelope = await crypto.encryptBytes(
+        VaultArchive.encode(winners.values),
+      );
+      await _store.writeArchiveAtomic(envelope);
+      archiveUploaded = true;
+      report.archiveUploaded = true;
+      // Local winners only become "synced" once the archive carrying them
+      // is safely stored.
+      for (final id in unionIds) {
         final local = localById[id];
-        if (local == null) {
-          // Unknown locally: apply (a tombstone payload inserts a tombstone
-          // row, so the deletion stays durable).
-          await _applyRemote(payload);
-          await _db.syncStateDao.markSynced(id, payload.updatedAt);
-          report.pulled++;
-        } else if (payload.updatedAt > local.updatedAt) {
-          await _applyRemote(payload);
-          await _db.syncStateDao.markSynced(id, payload.updatedAt);
-          report.pulled++;
-        } else {
-          // Equal: already in agreement. Older-remote: the remote was rolled
-          // back externally and the local entry is not dirty, so we keep the
-          // local version without fighting the server (documented policy).
-          if (payload.updatedAt == local.updatedAt &&
-              lastSyncedById[id] != payload.updatedAt) {
-            await _db.syncStateDao.markSynced(id, payload.updatedAt);
-          }
-          report.skipped++;
+        final winner = winners[id];
+        if (local != null &&
+            winner != null &&
+            winner.updatedAt == local.updatedAt &&
+            lastSyncedById[id] != local.updatedAt) {
+          await _db.syncStateDao.markSynced(id, local.updatedAt);
         }
       }
-      pullDone++;
       onProgress?.call(
-        SyncProgress(
-          phase: SyncPhase.pull,
-          processed: pullDone,
-          total: pullIds.length,
-        ),
+        const SyncProgress(phase: SyncPhase.uploading, processed: 1, total: 1),
       );
+    }
+
+    // --- 4. Legacy cleanup ---------------------------------------------------
+    // Only once a v2 archive is in place: the old per-entry files must never
+    // be the only copy that disappears.
+    if (archivePresent || archiveUploaded) {
+      try {
+        final removed = await _store.deleteLegacyEntries();
+        if (removed) {
+          onProgress?.call(
+            const SyncProgress(
+              phase: SyncPhase.cleaningUp,
+              processed: 1,
+              total: 1,
+            ),
+          );
+        }
+      } catch (error) {
+        report.warnings.add('could not remove legacy entry files: $error');
+      }
     }
 
     return report;
-  }
-
-  /// Reads and decrypts one remote entry. Failures (I/O errors, corrupted
-  /// envelopes) are recorded in [report.warnings] and flagged in the result
-  /// so the caller can skip the entry without clobbering unknown data. A
-  /// file that vanished between listing and reading is a quiet null.
-  Future<({SyncedEntry? payload, bool failed})> _readRemote(
-    VaultCrypto crypto,
-    String id,
-    SyncReport report,
-  ) async {
-    final Uint8List? bytes;
-    try {
-      bytes = await _store.read(id);
-    } catch (error) {
-      report.warnings.add('could not read remote entry $id: $error');
-      return (payload: null, failed: true);
-    }
-    if (bytes == null) return (payload: null, failed: false);
-    try {
-      return (
-        payload: SyncedEntry.fromJson(await crypto.decryptJson(bytes)),
-        failed: false,
-      );
-    } catch (error) {
-      report.warnings.add(
-        'remote entry $id is corrupted or unreadable: $error',
-      );
-      return (payload: null, failed: true);
-    }
   }
 
   /// Applies a remote payload verbatim, tombstone included.
