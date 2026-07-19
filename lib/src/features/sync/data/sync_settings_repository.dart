@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:drift/drift.dart';
 
 import '../../../data/db/oneiro_database.dart';
@@ -102,6 +104,61 @@ abstract class SyncSettingsRepository {
   /// When the last successful sync finished; null if never.
   Future<DateTime?> lastSyncAt();
   Future<void> recordSyncAt(DateTime at);
+
+  /// Summary of the most recent completed run — including runs that
+  /// finished in a background isolate while the app was closed.
+  Future<SyncRunSummary?> lastRunSummary();
+  Future<void> recordRunSummary(SyncRunSummary summary);
+}
+
+/// Compact, persistable summary of one sync run.
+///
+/// The foreground controller keeps full [SyncReport] objects in memory;
+/// this is what survives process death so the UI can say "Last sync
+/// finished in background: pushed 3, pulled 1" after the WorkManager
+/// worker did the job while the app was closed.
+class SyncRunSummary {
+  const SyncRunSummary({
+    required this.pushed,
+    required this.pulled,
+    required this.conflictsResolved,
+    required this.warningCount,
+    required this.background,
+    required this.finishedAt,
+  });
+
+  final int pushed;
+  final int pulled;
+  final int conflictsResolved;
+  final int warningCount;
+
+  /// True when the run completed in the WorkManager background isolate.
+  final bool background;
+
+  final DateTime finishedAt;
+
+  Map<String, Object?> toJson() => {
+    'pushed': pushed,
+    'pulled': pulled,
+    'conflicts': conflictsResolved,
+    'warnings': warningCount,
+    'background': background,
+    'at': finishedAt.millisecondsSinceEpoch,
+  };
+
+  static SyncRunSummary? fromJson(Map<String, Object?> json) {
+    final at = json['at'];
+    if (at is! int) return null;
+    int intField(String name) => json[name] is int ? json[name]! as int : 0;
+    return SyncRunSummary(
+      pushed: intField('pushed'),
+      pulled: intField('pulled'),
+      conflictsResolved: intField('conflicts'),
+      warningCount: intField('warnings'),
+      background: json['background'] == true,
+      finishedAt: DateTime.fromMillisecondsSinceEpoch(at),
+    );
+  }
 }
 
 /// [SyncSettingsRepository] backed by the drift `app_settings` table.
@@ -117,6 +174,7 @@ class DriftSyncSettingsRepository implements SyncSettingsRepository {
   static const _kLocalFolderPath = 'sync.localFolderPath';
   static const _kRememberPassphrase = 'sync.rememberPassphrase';
   static const _kLastSyncAtMs = 'sync.lastSyncAtMs';
+  static const _kLastRunSummary = 'sync.lastRunSummary';
 
   static SyncConnectionSettings _decode(Map<String, String> m) {
     final basePath = (m[_kBasePath] ?? '').trim();
@@ -181,4 +239,21 @@ class DriftSyncSettingsRepository implements SyncSettingsRepository {
   @override
   Future<void> recordSyncAt(DateTime at) =>
       _put(_kLastSyncAtMs, '${at.millisecondsSinceEpoch}');
+
+  @override
+  Future<SyncRunSummary?> lastRunSummary() async {
+    final raw = (await _readAll())[_kLastRunSummary];
+    if (raw == null) return null;
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, Object?>) return null;
+      return SyncRunSummary.fromJson(decoded);
+    } on FormatException {
+      return null;
+    }
+  }
+
+  @override
+  Future<void> recordRunSummary(SyncRunSummary summary) =>
+      _put(_kLastRunSummary, jsonEncode(summary.toJson()));
 }

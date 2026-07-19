@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/providers.dart';
@@ -52,9 +52,11 @@ class SyncUiState {
   const SyncUiState({
     this.unlocked = false,
     this.syncing = false,
+    this.paused = false,
     this.progress,
     this.lastSyncAt,
     this.lastReport,
+    this.lastRunSummary,
     this.lastError,
   });
 
@@ -63,6 +65,10 @@ class SyncUiState {
 
   /// A sync run is in flight.
   final bool syncing;
+
+  /// The app was backgrounded mid-sync. The run may still complete in the
+  /// background; the UI should say it resumes when the user is back.
+  final bool paused;
 
   /// Live phase counts of the in-flight run, null when not syncing.
   final SyncProgress? progress;
@@ -73,23 +79,33 @@ class SyncUiState {
   /// Report of the most recent run this session.
   final SyncReport? lastReport;
 
+  /// Persisted summary of the last run (including background runs that
+  /// finished while the app was closed).
+  final SyncRunSummary? lastRunSummary;
+
   /// Last unlock/sync failure to surface in the UI.
   final String? lastError;
 
   SyncUiState copyWith({
     bool? unlocked,
     bool? syncing,
+    bool? paused,
     SyncProgress? Function()? progress,
     DateTime? lastSyncAt,
     SyncReport? lastReport,
+    SyncRunSummary? Function()? lastRunSummary,
     String? Function()? lastError,
   }) {
     return SyncUiState(
       unlocked: unlocked ?? this.unlocked,
       syncing: syncing ?? this.syncing,
+      paused: paused ?? this.paused,
       progress: progress == null ? this.progress : progress(),
       lastSyncAt: lastSyncAt ?? this.lastSyncAt,
       lastReport: lastReport ?? this.lastReport,
+      lastRunSummary: lastRunSummary == null
+          ? this.lastRunSummary
+          : lastRunSummary(),
       lastError: lastError == null ? this.lastError : lastError(),
     );
   }
@@ -103,18 +119,66 @@ class SyncUiState {
 class SyncController extends Notifier<SyncUiState> {
   VaultCrypto? _crypto;
 
+  /// Set when the app is backgrounded mid-sync; consumed by the resume
+  /// handler to decide whether an automatic restart is needed.
+  bool _interrupted = false;
+
+  AppLifecycleListener? _lifecycle;
+
   @override
   SyncUiState build() {
     unawaited(_hydrateLastSyncAt());
+    _lifecycle?.dispose();
+    _lifecycle = AppLifecycleListener(
+      onPause: handleAppPause,
+      onResume: handleAppResume,
+    );
+    ref.onDispose(() => _lifecycle?.dispose());
     return const SyncUiState();
   }
 
   Future<void> _hydrateLastSyncAt() async {
     try {
-      final at = await ref.read(syncSettingsRepositoryProvider).lastSyncAt();
-      if (at != null) state = state.copyWith(lastSyncAt: at);
+      final repo = ref.read(syncSettingsRepositoryProvider);
+      final at = await repo.lastSyncAt();
+      final summary = await repo.lastRunSummary();
+      state = state.copyWith(lastSyncAt: at, lastRunSummary: () => summary);
     } catch (error) {
       debugPrint('Oneiro: could not load last sync time: $error');
+    }
+  }
+
+  /// App moved to the background (screen off, app switch). When a sync is
+  /// in flight, mark it interrupted and — with a remembered passphrase —
+  /// hand the job to WorkManager, which holds a system wake lock and can
+  /// finish even if this process is frozen or killed.
+  @visibleForTesting
+  void handleAppPause() {
+    if (!state.syncing) return;
+    _interrupted = true;
+    state = state.copyWith(paused: true);
+    unawaited(() async {
+      try {
+        final settings = await ref.read(syncConnectionSettingsProvider.future);
+        if (settings.isConfigured && settings.rememberPassphrase) {
+          await ref.read(backgroundSyncSchedulerProvider).runOnce();
+        }
+      } catch (error) {
+        debugPrint('Oneiro: could not hand sync to background: $error');
+      }
+    }());
+  }
+
+  /// App returned to the foreground. If the interrupted run did not finish
+  /// on its own (process frozen mid-flight), restart it — the merge is
+  /// idempotent, so re-running is always safe.
+  @visibleForTesting
+  void handleAppResume() {
+    if (state.paused) state = state.copyWith(paused: false);
+    if (!_interrupted) return;
+    _interrupted = false;
+    if (!state.syncing) {
+      unawaited(syncNow());
     }
   }
 
@@ -190,6 +254,7 @@ class SyncController extends Notifier<SyncUiState> {
     }
     state = state.copyWith(
       syncing: true,
+      paused: false,
       progress: () => null,
       lastError: () => null,
     );
@@ -202,19 +267,30 @@ class SyncController extends Notifier<SyncUiState> {
       );
       _crypto = engine.crypto;
       var lastSyncAt = state.lastSyncAt;
+      var lastRunSummary = state.lastRunSummary;
       if (!report.needsUnlock) {
         lastSyncAt = report.syncedAt;
         if (lastSyncAt != null) {
-          await ref
-              .read(syncSettingsRepositoryProvider)
-              .recordSyncAt(lastSyncAt);
+          lastRunSummary = SyncRunSummary(
+            pushed: report.pushed,
+            pulled: report.pulled,
+            conflictsResolved: report.conflictsResolved,
+            warningCount: report.warnings.length,
+            background: false,
+            finishedAt: lastSyncAt,
+          );
+          final repo = ref.read(syncSettingsRepositoryProvider);
+          await repo.recordSyncAt(lastSyncAt);
+          await repo.recordRunSummary(lastRunSummary);
         }
       }
       state = state.copyWith(
         syncing: false,
+        paused: false,
         progress: () => null,
         lastSyncAt: lastSyncAt,
         lastReport: report,
+        lastRunSummary: () => lastRunSummary,
       );
       return report;
     } catch (error) {

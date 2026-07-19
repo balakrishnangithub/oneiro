@@ -125,13 +125,21 @@ AWOKEN_EXPORT_PATH=/path/to/"Awoken Dream Export.txt" flutter test test/features
 4. Tap **Sync now**. On a second device, configure the same location and
    unlock with the same passphrase.
 
-While a manual sync runs, Oneiro holds a wake lock and shows live
-per-entry progress, so a large first push finishes even if the screen
-turns off. If you enable **Remember on this device**, Android also syncs
-periodically (about every 6 hours, on network with a healthy battery)
-while the app is fully closed — that background run needs the remembered
-passphrase to unlock the vault without you. Turn the toggle off (or tap
-**Lock**) and background sync stops with it.
+Sync uploads the whole journal as **one** gzip-compressed encrypted archive
+(`archive.bin`), not hundreds of per-entry files — a large first sync takes
+seconds, and merging still happens dream-by-dream so conflict resolution and
+deletions stay granular (see [docs/sync-format.md](docs/sync-format.md)).
+Uploads are atomic and every run is idempotent, so an interrupted sync is
+never a problem: it resumes when you're back, and with **Remember on this
+device** enabled a background task finishes it even while the screen is off.
+While a manual sync runs, Oneiro holds a wake lock and shows live phase
+progress (downloading / merging / uploading).
+
+With **Remember on this device**, Android also syncs periodically (about
+every 6 hours, on network with a healthy battery) while the app is fully
+closed — that background run needs the remembered passphrase to unlock the
+vault without you. Turn the toggle off (or tap **Lock**) and background
+sync stops with it.
 
 ## Architecture
 

@@ -13,6 +13,10 @@ import '../domain/sync_engine.dart';
 /// Unique WorkManager task name for Oneiro's periodic background sync.
 const backgroundSyncTaskName = 'io.github.lightbala.oneiro.periodic-sync';
 
+/// Unique WorkManager task name for the one-off continuation enqueued when
+/// a foreground sync is interrupted (app backgrounded, screen off).
+const backgroundSyncOnceTaskName = 'io.github.lightbala.oneiro.sync-once';
+
 /// How often Android wakes the app for a background sync. WorkManager may
 /// defer this further under doze/battery pressure — it is a safety net on top
 /// of app-start auto-sync, not a real-time channel.
@@ -74,9 +78,20 @@ Future<bool> runBackgroundSync({
   }
   final report = await engine.sync();
   if (!report.needsUnlock) {
+    final settingsRepository = DriftSyncSettingsRepository(db);
     final syncedAt = report.syncedAt;
     if (syncedAt != null) {
-      await DriftSyncSettingsRepository(db).recordSyncAt(syncedAt);
+      await settingsRepository.recordSyncAt(syncedAt);
+      await settingsRepository.recordRunSummary(
+        SyncRunSummary(
+          pushed: report.pushed,
+          pulled: report.pulled,
+          conflictsResolved: report.conflictsResolved,
+          warningCount: report.warnings.length,
+          background: true,
+          finishedAt: syncedAt,
+        ),
+      );
     }
   }
   debugPrint('Oneiro: background sync finished — $report');
@@ -96,6 +111,14 @@ abstract class BackgroundSyncScheduler {
 
   /// Removes the periodic task (vault locked, "remember" turned off).
   Future<void> cancel();
+
+  /// Enqueues a single background sync as soon as constraints allow.
+  ///
+  /// Used when a foreground sync is interrupted (app backgrounded, screen
+  /// turned off): WorkManager holds a system wake lock and finishes the
+  /// job even if the process is frozen. Only meaningful with a remembered
+  /// passphrase — without one the background isolate cannot unlock.
+  Future<void> runOnce();
 }
 
 /// [BackgroundSyncScheduler] backed by Android WorkManager.
@@ -119,6 +142,17 @@ class WorkmanagerBackgroundSyncScheduler implements BackgroundSyncScheduler {
   Future<void> cancel() async {
     if (!Platform.isAndroid) return;
     await Workmanager().cancelByUniqueName(backgroundSyncTaskName);
+  }
+
+  @override
+  Future<void> runOnce() async {
+    if (!Platform.isAndroid) return;
+    await Workmanager().registerOneOffTask(
+      backgroundSyncOnceTaskName,
+      backgroundSyncOnceTaskName,
+      constraints: Constraints(networkType: NetworkType.connected),
+      existingWorkPolicy: ExistingWorkPolicy.replace,
+    );
   }
 }
 

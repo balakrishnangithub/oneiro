@@ -278,7 +278,9 @@ class _SyncSectionState extends ConsumerState<SyncSection> {
                 icon: const Icon(Icons.sync),
                 label: Text(
                   syncState.syncing
-                      ? _progressText(syncState.progress)
+                      ? (syncState.paused
+                            ? 'Paused…'
+                            : _progressText(syncState.progress))
                       : 'Sync now',
                 ),
               ),
@@ -320,6 +322,9 @@ class _SyncSectionState extends ConsumerState<SyncSection> {
   }
 
   static String _statusText(SyncUiState state) {
+    if (state.paused) {
+      return 'Paused — sync resumes when you\'re back';
+    }
     if (state.syncing) return _progressText(state.progress);
     if (state.lastError != null) return state.lastError!;
     final report = state.lastReport;
@@ -336,6 +341,18 @@ class _SyncSectionState extends ConsumerState<SyncSection> {
       return 'Last sync: ${time}pushed ${report.pushed}, '
           'pulled ${report.pulled}, skipped ${report.skipped}'
           '$conflicts$warnings';
+    }
+    // A background run may have finished while the app was closed; its
+    // persisted summary is the freshest thing we know.
+    final summary = state.lastRunSummary;
+    if (summary != null) {
+      final time = DateFormat('EEE d MMM, HH:mm').format(summary.finishedAt);
+      final where = summary.background ? ' (in background)' : '';
+      final warnings = summary.warningCount == 0
+          ? ''
+          : ', ${summary.warningCount} warnings';
+      return 'Last sync: $time$where — pushed ${summary.pushed}, '
+          'pulled ${summary.pulled}$warnings';
     }
     if (state.lastSyncAt != null) {
       return 'Last sync: '

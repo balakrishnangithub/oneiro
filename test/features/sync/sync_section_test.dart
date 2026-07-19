@@ -440,4 +440,177 @@ void main() {
 
     await unmountApp(tester);
   });
+
+  testWidgets('pause mid-sync hands off to WorkManager; resume restarts', (
+    tester,
+  ) async {
+    final scheduler = FakeBackgroundSyncScheduler();
+    final wakeLock = FakeSyncWakeLock();
+    final dir = tempVaultDir();
+    tester.view.physicalSize = const Size(1080, 3400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          oneiroDatabaseProvider.overrideWithValue(db),
+          secureCredentialsStoreProvider.overrideWithValue(secureStore),
+          backgroundSyncSchedulerProvider.overrideWithValue(scheduler),
+          syncWakeLockProvider.overrideWithValue(wakeLock),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) {
+                container = ProviderScope.containerOf(context);
+                return const SingleChildScrollView(child: SyncSection());
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await configureLocalFolder(tester, dir);
+    await warmUpSyncStore(tester);
+
+    // Remember ON: the background hand-off is allowed.
+    await tester.tap(
+      find.widgetWithText(SwitchListTile, 'Remember on this device'),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Vault passphrase'),
+      'a very strong passphrase',
+    );
+    await tapAndWaitFor(
+      tester,
+      find.text('Set / unlock'),
+      find.widgetWithText(ListTile, 'Vault unlocked'),
+    );
+
+    // Poll the real-async event loop until [condition] holds (bounded).
+    Future<void> pollUntil(bool Function() condition) async {
+      for (var i = 0; i < 40 && !condition(); i++) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 200)),
+        );
+        await tester.pump();
+      }
+    }
+
+    // Start a sync and background the app while it is in flight.
+    await tester.tap(find.text('Sync now'));
+    await tester.pump(); // let syncNow reach syncing=true
+    final controller = container.read(syncControllerProvider.notifier);
+    controller.handleAppPause();
+    await tester.pump();
+    await tester.pump(); // let the hand-off closure reach the scheduler
+
+    expect(container.read(syncControllerProvider).paused, isTrue);
+    expect(scheduler.runOnceCount, 1);
+    expect(find.text('Paused…'), findsOneWidget);
+
+    // Let the in-flight sync finish on its own.
+    await pollUntil(() => wakeLock.releaseCount >= 1);
+    expect(wakeLock.acquireCount, 1);
+    expect(container.read(syncControllerProvider).paused, isFalse);
+
+    // Back in the foreground: the interrupted flag triggers a fresh sync.
+    controller.handleAppResume();
+    await tester.pump();
+    await pollUntil(() => wakeLock.releaseCount >= 2);
+    expect(wakeLock.acquireCount, 2);
+
+    await unmountApp(tester);
+  });
+
+  testWidgets('pause mid-sync without remembered passphrase skips the '
+      'background hand-off', (tester) async {
+    final scheduler = FakeBackgroundSyncScheduler();
+    final dir = tempVaultDir();
+    tester.view.physicalSize = const Size(1080, 3400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          oneiroDatabaseProvider.overrideWithValue(db),
+          secureCredentialsStoreProvider.overrideWithValue(secureStore),
+          backgroundSyncSchedulerProvider.overrideWithValue(scheduler),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) {
+                container = ProviderScope.containerOf(context);
+                return const SingleChildScrollView(child: SyncSection());
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await configureLocalFolder(tester, dir);
+    await warmUpSyncStore(tester);
+
+    // Remember stays OFF.
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Vault passphrase'),
+      'a very strong passphrase',
+    );
+    await tapAndWaitFor(
+      tester,
+      find.text('Set / unlock'),
+      find.widgetWithText(ListTile, 'Vault unlocked'),
+    );
+
+    await tester.tap(find.text('Sync now'));
+    await tester.pump();
+    final controller = container.read(syncControllerProvider.notifier);
+    controller.handleAppPause();
+    await tester.pump();
+    await tester.pump();
+
+    expect(container.read(syncControllerProvider).paused, isTrue);
+    expect(scheduler.runOnceCount, 0);
+
+    await unmountApp(tester);
+  });
+
+  testWidgets('pausing without an active sync is a no-op', (tester) async {
+    final scheduler = FakeBackgroundSyncScheduler();
+    tester.view.physicalSize = const Size(1080, 3400);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          oneiroDatabaseProvider.overrideWithValue(db),
+          secureCredentialsStoreProvider.overrideWithValue(secureStore),
+          backgroundSyncSchedulerProvider.overrideWithValue(scheduler),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) {
+                container = ProviderScope.containerOf(context);
+                return const SingleChildScrollView(child: SyncSection());
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    container.read(syncControllerProvider.notifier).handleAppPause();
+    await tester.pump();
+
+    expect(container.read(syncControllerProvider).paused, isFalse);
+    expect(scheduler.runOnceCount, 0);
+
+    await unmountApp(tester);
+  });
 }

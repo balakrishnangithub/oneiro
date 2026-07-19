@@ -41,6 +41,7 @@ class FakeSyncWakeLock implements SyncWakeLock {
 class FakeBackgroundSyncScheduler implements BackgroundSyncScheduler {
   int ensureScheduledCount = 0;
   int cancelCount = 0;
+  int runOnceCount = 0;
 
   @override
   Future<void> ensureScheduled() async {
@@ -50,5 +51,10 @@ class FakeBackgroundSyncScheduler implements BackgroundSyncScheduler {
   @override
   Future<void> cancel() async {
     cancelCount++;
+  }
+
+  @override
+  Future<void> runOnce() async {
+    runOnceCount++;
   }
 }

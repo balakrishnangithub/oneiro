@@ -82,6 +82,13 @@ void main() {
       expect(File('${vaultDir.path}/vault.json').existsSync(), isTrue);
       expect(await settingsRepository.lastSyncAt(), isNotNull);
 
+      // The persisted summary tells the UI this ran in the background.
+      final summary = await settingsRepository.lastRunSummary();
+      expect(summary, isNotNull);
+      expect(summary!.background, isTrue);
+      expect(summary.pushed, 2);
+      expect(summary.pulled, 0);
+
       // Nothing changed: a second run leaves the archive untouched.
       final archiveBytes = await archiveFile.readAsBytes();
       expect(await runBackgroundSync(db: db, secure: secure), isTrue);
