@@ -100,10 +100,15 @@ class FakeCluePlayer implements CluePlayer {
 /// Controllable permission flow for widget tests.
 class FakeNotificationPermissionService
     implements NotificationPermissionService {
-  FakeNotificationPermissionService({this.granted = true});
+  FakeNotificationPermissionService({
+    this.granted = true,
+    this.exactAlarmsAllowed = true,
+  });
 
   bool granted;
+  bool exactAlarmsAllowed;
   int requestCount = 0;
+  int requestExactAlarmsCount = 0;
 
   @override
   Future<bool> isGranted() async => granted;
@@ -112,5 +117,14 @@ class FakeNotificationPermissionService
   Future<bool> request() async {
     requestCount++;
     return granted;
+  }
+
+  @override
+  Future<bool> canExactAlarms() async => exactAlarmsAllowed;
+
+  @override
+  Future<bool> requestExactAlarms() async {
+    requestExactAlarmsCount++;
+    return exactAlarmsAllowed;
   }
 }

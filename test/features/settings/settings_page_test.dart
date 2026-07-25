@@ -16,6 +16,7 @@ import '../../support/unmount_app.dart';
 void main() {
   late OneiroDatabase db;
   late DriftSettingsRepository repository;
+  late FakeNotificationPermissionService permissionService;
 
   Widget wrap() {
     return ProviderScope(
@@ -26,7 +27,7 @@ void main() {
         ),
         cluePlayerProvider.overrideWithValue(FakeCluePlayer()),
         notificationPermissionServiceProvider.overrideWithValue(
-          FakeNotificationPermissionService(granted: false),
+          permissionService,
         ),
         // The Privacy section reads the credential vault; never let widget
         // tests touch the real plugin.
@@ -51,6 +52,7 @@ void main() {
   setUp(() {
     db = createTestDatabase();
     repository = DriftSettingsRepository(db);
+    permissionService = FakeNotificationPermissionService(granted: false);
   });
 
   tearDown(() async => db.close());
@@ -118,18 +120,67 @@ void main() {
     await unmountApp(tester);
   });
 
-  testWidgets('shows blocked-permission row and offers a request button', (
+  testWidgets('shows blocked-permission row and offers an allow button', (
     tester,
   ) async {
     await pumpSettings(tester);
 
-    final row = find.text('Notifications are blocked');
+    final row = find.textContaining('Notifications are blocked');
     await tester.ensureVisible(row);
     expect(row, findsOneWidget);
-    expect(find.text('Request'), findsOneWidget);
+    expect(find.text('Allow'), findsOneWidget);
 
-    await tester.tap(find.text('Request'));
+    await tester.tap(find.text('Allow'));
     await tester.pumpAndSettle();
+    expect(permissionService.requestCount, 1);
+
+    await unmountApp(tester);
+  });
+
+  testWidgets('turning a reminder ON while denied re-asks for permission', (
+    tester,
+  ) async {
+    await pumpSettings(tester);
+    expect(permissionService.requestCount, 0);
+
+    final tile = find.widgetWithText(SwitchListTile, 'Night-time audio cues');
+    await tester.ensureVisible(tile);
+    await tester.tap(tile);
+    await tester.pumpAndSettle();
+
+    expect((await repository.load()).dreamCluesEnabled, isTrue);
+    expect(permissionService.requestCount, 1);
+
+    await unmountApp(tester);
+  });
+
+  testWidgets('granted but no exact alarms: offers the precise-timing fix', (
+    tester,
+  ) async {
+    permissionService.granted = true;
+    permissionService.exactAlarmsAllowed = false;
+    await pumpSettings(tester);
+
+    final row = find.text('Reminder times may be approximate');
+    await tester.ensureVisible(row);
+    expect(row, findsOneWidget);
+
+    await tester.tap(find.text('Allow precise timing'));
+    await tester.pumpAndSettle();
+    expect(permissionService.requestExactAlarmsCount, 1);
+
+    await unmountApp(tester);
+  });
+
+  testWidgets('granted with exact alarms: no fix-up rows clutter the section', (
+    tester,
+  ) async {
+    permissionService.granted = true;
+    await pumpSettings(tester);
+
+    await tester.ensureVisible(find.text('Notifications are allowed'));
+    expect(find.text('Notifications are allowed'), findsOneWidget);
+    expect(find.text('Reminder times may be approximate'), findsNothing);
 
     await unmountApp(tester);
   });

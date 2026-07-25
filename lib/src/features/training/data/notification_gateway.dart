@@ -107,6 +107,28 @@ class LocalNotificationGateway implements NotificationGateway {
         macOS: DarwinNotificationDetails(presentSound: playSound),
       );
 
+  /// Picks the Android schedule mode the OS will actually accept.
+  ///
+  /// On Android 14+ the SCHEDULE_EXACT_ALARM special permission is DENIED by
+  /// default, and `zonedSchedule` with `AndroidScheduleMode.exactAllowWhileIdle`
+  /// then throws a PlatformException — which historically meant zero
+  /// notifications were ever scheduled (the failure was swallowed upstream).
+  /// When exact alarms are not granted we fall back to
+  /// [AndroidScheduleMode.inexactAllowWhileIdle]: the reminder may arrive a
+  /// few minutes off, but scheduling NEVER throws just because exact alarms
+  /// are denied. Null (non-Android platform / plugin unavailable) defaults
+  /// to exact, matching pre-check behavior on platforms without the concept.
+  Future<AndroidScheduleMode> _scheduleMode() async {
+    final android = _plugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+    final canExact = await android?.canScheduleExactNotifications() ?? true;
+    return canExact
+        ? AndroidScheduleMode.exactAllowWhileIdle
+        : AndroidScheduleMode.inexactAllowWhileIdle;
+  }
+
   @override
   Future<void> scheduleOnce({
     required int id,
@@ -115,14 +137,14 @@ class LocalNotificationGateway implements NotificationGateway {
     required String body,
     required String payload,
     bool playSound = true,
-  }) {
+  }) async {
     return _plugin.zonedSchedule(
       id: id,
       title: title,
       body: body,
       scheduledDate: tz.TZDateTime.from(at, tz.local),
       notificationDetails: _details(playSound: playSound),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      androidScheduleMode: await _scheduleMode(),
       payload: payload,
     );
   }
@@ -134,7 +156,7 @@ class LocalNotificationGateway implements NotificationGateway {
     required String title,
     required String body,
     required String payload,
-  }) {
+  }) async {
     final now = DateTime.now();
     var next = DateTime(
       now.year,
@@ -150,7 +172,7 @@ class LocalNotificationGateway implements NotificationGateway {
       body: body,
       scheduledDate: tz.TZDateTime.from(next, tz.local),
       notificationDetails: _details(playSound: false),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      androidScheduleMode: await _scheduleMode(),
       matchDateTimeComponents: DateTimeComponents.time,
       payload: payload,
     );

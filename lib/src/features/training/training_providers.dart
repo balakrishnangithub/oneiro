@@ -52,6 +52,15 @@ final notificationPermissionGrantedProvider = FutureProvider<bool>((ref) {
   return ref.watch(notificationPermissionServiceProvider).isGranted();
 });
 
+/// Current exact-alarm state; invalidate to re-check.
+///
+/// Android 14+ denies SCHEDULE_EXACT_ALARM by default, which silently made
+/// every reminder fire late (or, before the inexact fallback existed, not at
+/// all). The settings page surfaces this as an "approximate times" row.
+final exactAlarmsAllowedProvider = FutureProvider<bool>((ref) {
+  return ref.watch(notificationPermissionServiceProvider).canExactAlarms();
+});
+
 /// Pure planning engine; swaps the whole schedule when settings change.
 final notificationSchedulerProvider = Provider<NotificationScheduler>((ref) {
   return NotificationScheduler(gateway: ref.watch(notificationGatewayProvider));

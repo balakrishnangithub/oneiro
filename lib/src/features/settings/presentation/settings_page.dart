@@ -98,6 +98,26 @@ abstract class _SettingsSection extends ConsumerWidget {
   Future<void> save(WidgetRef ref, TrainingSettings next) =>
       ref.read(settingsRepositoryProvider).save(next);
 
+  /// Saves a reminder toggle; when the toggle was switched ON while the
+  /// OS-level notification permission is denied, immediately re-asks for it.
+  ///
+  /// The onboarding flow asks only once (by design), so without this a user
+  /// who once dismissed the prompt could enable reminders that then never
+  /// fire — and nothing in the UI would tell them why.
+  Future<void> saveReminderToggle(
+    WidgetRef ref,
+    TrainingSettings next, {
+    required bool turnedOn,
+  }) async {
+    await save(ref, next);
+    if (!turnedOn) return;
+    final granted =
+        ref.read(notificationPermissionGrantedProvider).valueOrNull ?? true;
+    if (granted) return;
+    await ref.read(notificationPermissionServiceProvider).request();
+    ref.invalidate(notificationPermissionGrantedProvider);
+  }
+
   Future<void> pickTime(
     BuildContext context,
     WidgetRef ref, {
@@ -128,8 +148,11 @@ class _RealityCheckSection extends _SettingsSection {
           title: const Text('Daytime reminders'),
           subtitle: const Text('Random prompts to question your reality'),
           value: settings.realityChecksEnabled,
-          onChanged: (value) =>
-              save(ref, settings.copyWith(realityChecksEnabled: value)),
+          onChanged: (value) => saveReminderToggle(
+            ref,
+            settings.copyWith(realityChecksEnabled: value),
+            turnedOn: value,
+          ),
         ),
         ListTile(
           title: Text('${settings.checksPerDay} checks per day'),
@@ -201,8 +224,11 @@ class _DreamClueSection extends _SettingsSection {
           title: const Text('Night-time audio cues'),
           subtitle: const Text('Soft totem sounds that can slip into dreams'),
           value: settings.dreamCluesEnabled,
-          onChanged: (value) =>
-              save(ref, settings.copyWith(dreamCluesEnabled: value)),
+          onChanged: (value) => saveReminderToggle(
+            ref,
+            settings.copyWith(dreamCluesEnabled: value),
+            turnedOn: value,
+          ),
         ),
         ListTile(
           title: Text('${settings.cluesPerNight} clues per night'),
@@ -296,8 +322,11 @@ class _MorningReminderSection extends _SettingsSection {
           title: const Text('Silent morning reminder'),
           subtitle: const Text('Keeps firing even while training is paused'),
           value: settings.morningReminderEnabled,
-          onChanged: (value) =>
-              save(ref, settings.copyWith(morningReminderEnabled: value)),
+          onChanged: (value) => saveReminderToggle(
+            ref,
+            settings.copyWith(morningReminderEnabled: value),
+            turnedOn: value,
+          ),
         ),
         ListTile(
           title: const Text('Reminder time'),
@@ -369,6 +398,16 @@ class _PauseSection extends _SettingsSection {
   }
 }
 
+/// Notification health: the OS permission state and, separately, the
+/// exact-alarm state.
+///
+/// Two distinct problems are surfaced here:
+/// - POST_NOTIFICATIONS denied → no reminder can appear at all. Android asks
+///   only once, so a denied user needs an in-app way back (the "Allow"
+///   button), not just the one-shot onboarding prompt.
+/// - Permission granted but SCHEDULE_EXACT_ALARM denied (Android 14+
+///   default) → reminders fire, but at approximate times. Fixable via the
+///   "Allow precise timing" button.
 class _PermissionSection extends ConsumerWidget {
   const _PermissionSection();
 
@@ -384,32 +423,65 @@ class _PermissionSection extends ConsumerWidget {
             leading: Icon(Icons.error_outline),
             title: Text('Permission status unavailable'),
           ),
-          data: (isGranted) => ListTile(
-            leading: Icon(
-              isGranted ? Icons.notifications_active : Icons.notifications_off,
-            ),
-            title: Text(
-              isGranted
-                  ? 'Notifications are allowed'
-                  : 'Notifications are blocked',
-            ),
-            subtitle: isGranted
-                ? null
-                : const Text('Reminders cannot appear without permission'),
-            trailing: isGranted
-                ? null
-                : TextButton(
-                    onPressed: () async {
-                      await ref
-                          .read(notificationPermissionServiceProvider)
-                          .request();
-                      ref.invalidate(notificationPermissionGrantedProvider);
-                    },
-                    child: const Text('Request'),
-                  ),
+          data: (isGranted) => Column(
+            children: [
+              ListTile(
+                leading: Icon(
+                  isGranted
+                      ? Icons.notifications_active
+                      : Icons.notifications_off,
+                ),
+                title: Text(
+                  isGranted
+                      ? 'Notifications are allowed'
+                      : "Notifications are blocked — reminders can't reach you",
+                ),
+                trailing: isGranted
+                    ? null
+                    : TextButton(
+                        onPressed: () async {
+                          await ref
+                              .read(notificationPermissionServiceProvider)
+                              .request();
+                          ref.invalidate(notificationPermissionGrantedProvider);
+                        },
+                        child: const Text('Allow'),
+                      ),
+              ),
+              // Exact alarms only matter once notifications can show at all.
+              if (isGranted) const _ExactAlarmsRow(),
+            ],
           ),
         ),
       ],
+    );
+  }
+}
+
+/// Visible only while notifications are allowed but exact alarms are not.
+class _ExactAlarmsRow extends ConsumerWidget {
+  const _ExactAlarmsRow();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final allowed = ref.watch(exactAlarmsAllowedProvider).valueOrNull ?? true;
+    if (allowed) return const SizedBox.shrink();
+    return ListTile(
+      leading: const Icon(Icons.schedule_outlined),
+      title: const Text('Reminder times may be approximate'),
+      subtitle: const Text(
+        'Android needs a separate permission to fire reminders exactly on '
+        'time',
+      ),
+      trailing: TextButton(
+        onPressed: () async {
+          await ref
+              .read(notificationPermissionServiceProvider)
+              .requestExactAlarms();
+          ref.invalidate(exactAlarmsAllowedProvider);
+        },
+        child: const Text('Allow precise timing'),
+      ),
     );
   }
 }
