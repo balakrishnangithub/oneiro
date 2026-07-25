@@ -133,6 +133,66 @@ void main() {
     await unmountApp(tester);
   });
 
+  testWidgets('configured connection locks behind Edit; save locks again', (
+    tester,
+  ) async {
+    TextField field(String label) =>
+        tester.widget<TextField>(find.widgetWithText(TextField, label));
+    // byWidgetPredicate because FilledButton.tonalIcon builds a private
+    // FilledButton subclass, which byType's exact-type match would miss.
+    FilledButton saveButton() => tester.widget<FilledButton>(
+      find.ancestor(
+        of: find.text('Save connection'),
+        matching: find.byWidgetPredicate((widget) => widget is FilledButton),
+      ),
+    );
+
+    await pumpSection(tester);
+
+    // First-ever configuration: editable, always saveable.
+    expect(field('Server URL').enabled, isTrue);
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Server URL'),
+      'https://webdav.example.com',
+    );
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Username'),
+      'dreamer',
+    );
+    await tester.tap(find.text('Save connection'));
+    await tester.pumpAndSettle();
+
+    // Configured: the form locks and only "Edit connection" is offered.
+    expect(find.text('Edit connection'), findsOneWidget);
+    expect(find.text('Save connection'), findsNothing);
+    expect(field('Server URL').enabled, isFalse);
+    expect(field('Username').enabled, isFalse);
+    expect(field('Password').enabled, isFalse);
+
+    // Edit unlocks the fields; with nothing changed, Save stays disabled.
+    await tester.tap(find.text('Edit connection'));
+    await tester.pumpAndSettle();
+    expect(find.text('Save connection'), findsOneWidget);
+    expect(field('Server URL').enabled, isTrue);
+    expect(saveButton().onPressed, isNull);
+
+    // A real change enables Save; saving locks the form again.
+    await tester.enterText(
+      find.widgetWithText(TextField, 'Username'),
+      'stargazer',
+    );
+    await tester.pumpAndSettle();
+    expect(saveButton().onPressed, isNotNull);
+    await tester.tap(find.text('Save connection'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Edit connection'), findsOneWidget);
+    expect(field('Server URL').enabled, isFalse);
+    expect((await settingsRepository.load()).username, 'stargazer');
+
+    await unmountApp(tester);
+  });
+
   testWidgets('local folder backend persists and shows folder field', (
     tester,
   ) async {

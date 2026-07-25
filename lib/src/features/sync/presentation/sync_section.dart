@@ -32,6 +32,15 @@ class _SyncSectionState extends ConsumerState<SyncSection> {
   /// stream emissions never clobber in-progress edits.
   bool _seeded = false;
 
+  /// Whether the connection form is editable right now.
+  ///
+  /// Once a working configuration exists, accidental edits are a real risk
+  /// (a stray keystroke in the WebDAV URL silently breaks every future
+  /// sync), so a configured form locks itself behind an explicit
+  /// "Edit connection" tap. Before the first-ever configuration the form is
+  /// always editable — there is nothing to protect yet.
+  bool _editing = false;
+
   @override
   void dispose() {
     _urlController.dispose();
@@ -52,6 +61,24 @@ class _SyncSectionState extends ConsumerState<SyncSection> {
     _localFolderController.text = settings.localFolderPath;
   }
 
+  /// Whether the form contents differ from the persisted [settings].
+  ///
+  /// The comparison mirrors [_saveConnection]'s normalization (trimmed,
+  /// empty vault folder means the default) so a user cannot be stuck with an
+  /// enabled "Save" that would persist exactly what is already saved. A
+  /// non-empty password always counts as a change: the real password is
+  /// never echoed back into the field (it lives in the credential vault), so
+  /// any typed password is by definition new.
+  bool _isDirty(SyncConnectionSettings settings) {
+    if (_passwordController.text.isNotEmpty) return true;
+    final basePath = _basePathController.text.trim();
+    return _urlController.text.trim() != settings.url ||
+        _usernameController.text.trim() != settings.username ||
+        (basePath.isEmpty ? defaultVaultBasePath : basePath) !=
+            settings.basePath ||
+        _localFolderController.text.trim() != settings.localFolderPath;
+  }
+
   Future<void> _saveConnection(SyncConnectionSettings current) async {
     final basePath = _basePathController.text.trim();
     final next = current.copyWith(
@@ -69,6 +96,9 @@ class _SyncSectionState extends ConsumerState<SyncSection> {
       _passwordController.clear();
     }
     if (mounted) {
+      // Lock the form again; the dirty comparison re-baselines itself
+      // because the settings stream now emits the just-saved values.
+      setState(() => _editing = false);
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('Sync connection saved')));
@@ -122,6 +152,11 @@ class _SyncSectionState extends ConsumerState<SyncSection> {
     final settings = settingsAsync.valueOrNull;
     if (settings != null) _seedFrom(settings);
     final backend = settings?.backendType ?? SyncBackendType.webdav;
+    // A configured form stays read-only until "Edit connection" is tapped;
+    // the first-ever configuration is editable from the start.
+    final configured = settings?.isConfigured ?? false;
+    final locked = configured && !_editing;
+    void refresh() => setState(() {});
 
     return SettingsSectionCard(
       title: 'Encrypted Sync',
@@ -169,35 +204,57 @@ class _SyncSectionState extends ConsumerState<SyncSection> {
             label: 'Server URL',
             hint: 'https://webdav.pcloud.com',
             keyboardType: TextInputType.url,
+            enabled: !locked,
+            onChanged: (_) => refresh(),
           ),
-          _FieldTile(controller: _usernameController, label: 'Username'),
+          _FieldTile(
+            controller: _usernameController,
+            label: 'Username',
+            enabled: !locked,
+            onChanged: (_) => refresh(),
+          ),
           _FieldTile(
             controller: _basePathController,
             label: 'Vault folder on server',
             hint: defaultVaultBasePath,
+            enabled: !locked,
+            onChanged: (_) => refresh(),
           ),
           _FieldTile(
             controller: _passwordController,
             label: 'Password',
             hint: 'Stored only in the device credential vault',
             obscure: true,
+            enabled: !locked,
+            onChanged: (_) => refresh(),
           ),
         ] else ...[
           _FieldTile(
             controller: _localFolderController,
             label: 'Vault folder path',
             hint: 'A folder your sync tool already mirrors',
+            enabled: !locked,
+            onChanged: (_) => refresh(),
           ),
         ],
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-          child: FilledButton.tonalIcon(
-            onPressed: settings == null
-                ? null
-                : () => _saveConnection(settings),
-            icon: const Icon(Icons.save_outlined),
-            label: const Text('Save connection'),
-          ),
+          child: locked
+              ? FilledButton.tonalIcon(
+                  onPressed: () => setState(() => _editing = true),
+                  icon: const Icon(Icons.edit_outlined),
+                  label: const Text('Edit connection'),
+                )
+              : FilledButton.tonalIcon(
+                  // First-ever configuration: always saveable. Afterwards,
+                  // only an actual change re-enables "Save connection".
+                  onPressed:
+                      settings == null || (configured && !_isDirty(settings))
+                      ? null
+                      : () => _saveConnection(settings),
+                  icon: const Icon(Icons.save_outlined),
+                  label: const Text('Save connection'),
+                ),
         ),
         const Divider(indent: 16, endIndent: 16),
         ListTile(
@@ -379,6 +436,7 @@ class _FieldTile extends StatefulWidget {
     this.hint,
     this.obscure = false,
     this.keyboardType,
+    this.enabled = true,
     this.onChanged,
   });
 
@@ -387,6 +445,9 @@ class _FieldTile extends StatefulWidget {
   final String? hint;
   final bool obscure;
   final TextInputType? keyboardType;
+
+  /// False renders the field read-only (locked connection form).
+  final bool enabled;
   final ValueChanged<String>? onChanged;
 
   @override
@@ -404,6 +465,7 @@ class _FieldTileState extends State<_FieldTile> {
         controller: widget.controller,
         obscureText: _obscured,
         keyboardType: widget.keyboardType,
+        enabled: widget.enabled,
         onChanged: widget.onChanged,
         decoration: InputDecoration(
           labelText: widget.label,
