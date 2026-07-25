@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:isolate';
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -107,6 +108,63 @@ abstract final class PinHasher {
       return false;
     }
     final candidate = _derive(pin, salt, n);
+    return _constantTimeEquals(candidate, expected);
+  }
+
+  /// Async variant of [hash]: the scrypt derivation runs inside
+  /// [Isolate.run] so the UI isolate never stalls on a PIN submit.
+  ///
+  /// Validation and salt generation stay on the caller isolate (identical
+  /// semantics to [hash], including the [ArgumentError]s); only the
+  /// CPU-heavy [_derive] crosses the isolate boundary. String, [Uint8List]
+  /// and int are all sendable, so the closure captures nothing the isolate
+  /// cannot receive.
+  static Future<String> hashAsync(
+    String pin, {
+    Uint8List? salt,
+    Random? random,
+    int kdfN = defaultKdfN,
+  }) async {
+    if (!isValidPin(pin)) {
+      throw ArgumentError.value(pin, 'pin', 'must be 4–8 digits');
+    }
+    final effectiveSalt =
+        salt ?? _randomBytes(saltLength, random ?? Random.secure());
+    if (effectiveSalt.length != saltLength) {
+      throw ArgumentError.value(
+        effectiveSalt,
+        'salt',
+        'must be $saltLength bytes',
+      );
+    }
+    final digest = await Isolate.run(() => _derive(pin, effectiveSalt, kdfN));
+    return '$formatTag\$$kdfN\$$kdfR\$$kdfP\$${pin.length}'
+        '\$${base64Encode(effectiveSalt)}\$${base64Encode(digest)}';
+  }
+
+  /// Async variant of [verify]: malformed stored strings are rejected on the
+  /// caller isolate (identical false-semantics to [verify]); the scrypt
+  /// derivation and the constant-time comparison run inside [Isolate.run] so
+  /// a wrong-digit tap never freezes the lock pad.
+  static Future<bool> verifyAsync(String pin, String stored) async {
+    final parts = stored.split('\$');
+    if (parts.length != 7 || parts[0] != formatTag) return false;
+    final n = int.tryParse(parts[1]);
+    final r = int.tryParse(parts[2]);
+    final p = int.tryParse(parts[3]);
+    if (n == null || r != kdfR || p != kdfP) return false;
+    final Uint8List salt;
+    final Uint8List expected;
+    try {
+      salt = base64Decode(parts[5]);
+      expected = base64Decode(parts[6]);
+    } on FormatException {
+      return false;
+    }
+    if (salt.length != saltLength || expected.length != hashLength) {
+      return false;
+    }
+    final candidate = await Isolate.run(() => _derive(pin, salt, n));
     return _constantTimeEquals(candidate, expected);
   }
 

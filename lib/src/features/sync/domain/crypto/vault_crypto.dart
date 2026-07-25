@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:isolate';
 import 'dart:math';
 import 'dart:typed_data';
 
@@ -145,7 +146,15 @@ class VaultCrypto {
   VaultCrypto._(this._masterKey);
 
   final Uint8List _masterKey;
-  final AesGcm _cipher = AesGcm.with256bits();
+
+  /// A copy of the in-memory master key.
+  ///
+  /// Exists so [VaultCrypto.encryptEnvelopeRaw]/[VaultCrypto.decryptEnvelopeRaw]
+  /// (and the `VaultArchive` off-isolate helpers built on them) can run the
+  /// heavy AES-GCM + gzip work on a background isolate within the SAME
+  /// process. The bytes must never leave this process — no persistence, no
+  /// platform channels, no logs.
+  Uint8List get masterKeyBytes => Uint8List.fromList(_masterKey);
 
   // --- OVault v2 constants ---------------------------------------------------
 
@@ -187,6 +196,23 @@ class VaultCrypto {
     return derivator.process(Uint8List.fromList(utf8.encode(passphrase)));
   }
 
+  /// Runs [_deriveKey] on a background isolate.
+  ///
+  /// scrypt at production cost (N = 2^15) takes well over a second on a
+  /// phone; running it on the UI isolate froze the whole app (most visibly
+  /// the PIN pad) during every cold-start auto-unlock. All captured values
+  /// are sendable (String, [Uint8List], ints), so [Isolate.run] can carry
+  /// the closure across.
+  static Future<Uint8List> _deriveKeyOffIsolate(
+    String passphrase,
+    Uint8List salt, {
+    required int n,
+    required int r,
+    required int p,
+  }) {
+    return Isolate.run(() => _deriveKey(passphrase, salt, n: n, r: r, p: p));
+  }
+
   /// Creates a new vault: generates a random [salt] (unless supplied, e.g. by
   /// tests), derives the master key and returns the descriptor to upload plus
   /// the unlocked crypto instance.
@@ -207,7 +233,7 @@ class VaultCrypto {
         'must be $saltLength bytes',
       );
     }
-    final key = _deriveKey(
+    final key = await _deriveKeyOffIsolate(
       passphrase,
       effectiveSalt,
       n: kdfN,
@@ -240,7 +266,7 @@ class VaultCrypto {
     String passphrase,
     VaultDescriptor descriptor,
   ) async {
-    final key = _deriveKey(
+    final key = await _deriveKeyOffIsolate(
       passphrase,
       descriptor.salt,
       n: descriptor.kdfN,
@@ -267,9 +293,44 @@ class VaultCrypto {
   /// Encrypts arbitrary plaintext bytes into an OVault envelope
   /// (`{"v":2,"nonce":b64,"ct":b64}`), UTF-8 encoded. A fresh random nonce is
   /// generated for every call.
-  Future<Uint8List> encryptBytes(Uint8List plaintext, {Random? random}) async {
-    final nonce = _randomBytes(nonceLength, random ?? Random.secure());
-    final ct = await _encryptRaw(plaintext, nonce);
+  Future<Uint8List> encryptBytes(Uint8List plaintext, {Random? random}) {
+    return encryptEnvelopeRaw(
+      _masterKey,
+      plaintext,
+      randomNonce(random: random),
+    );
+  }
+
+  /// Decrypts an OVault envelope back into raw plaintext bytes.
+  ///
+  /// Throws [FormatException] on malformed envelopes and
+  /// [VaultAuthenticationException] when the authentication tag does not
+  /// verify (tampered or wrong key).
+  Future<Uint8List> decryptBytes(Uint8List envelopeBytes) {
+    return decryptEnvelopeRaw(_masterKey, envelopeBytes);
+  }
+
+  /// A fresh random GCM nonce ([nonceLength] bytes).
+  ///
+  /// Exposed so off-isolate encryption paths ([encryptEnvelopeRaw]) can draw
+  /// the nonce on the caller side (keeping [Random.secure] usage testable)
+  /// while the sealing itself runs in a background isolate.
+  static Uint8List randomNonce({Random? random}) =>
+      _randomBytes(nonceLength, random ?? Random.secure());
+
+  /// Static twin of [encryptBytes] with a caller-provided [nonce], usable
+  /// inside a background isolate: it recreates the cipher locally and never
+  /// touches instance state.
+  ///
+  /// Same envelope layout and semantics as [encryptBytes]; the nonce comes
+  /// from the caller because GCM nonce reuse under one key is fatal, and the
+  /// isolate boundary must never silently duplicate a "random" draw.
+  static Future<Uint8List> encryptEnvelopeRaw(
+    Uint8List masterKey,
+    Uint8List plaintext,
+    Uint8List nonce,
+  ) async {
+    final ct = await _encryptRawWith(masterKey, plaintext, nonce);
     return Uint8List.fromList(
       utf8.encode(
         jsonEncode({
@@ -281,12 +342,16 @@ class VaultCrypto {
     );
   }
 
-  /// Decrypts an OVault envelope back into raw plaintext bytes.
+  /// Static twin of [decryptBytes], usable inside a background isolate:
+  /// recreates the cipher locally and never touches instance state.
   ///
   /// Throws [FormatException] on malformed envelopes and
   /// [VaultAuthenticationException] when the authentication tag does not
   /// verify (tampered or wrong key).
-  Future<Uint8List> decryptBytes(Uint8List envelopeBytes) async {
+  static Future<Uint8List> decryptEnvelopeRaw(
+    Uint8List masterKey,
+    Uint8List envelopeBytes,
+  ) async {
     final Object? decoded;
     try {
       decoded = jsonDecode(utf8.decode(envelopeBytes));
@@ -315,7 +380,7 @@ class VaultCrypto {
     if (nonce.length != nonceLength) {
       throw FormatException('nonce must be $nonceLength bytes');
     }
-    return _decryptRaw(ct, nonce);
+    return _decryptRawWith(masterKey, ct, nonce);
   }
 
   /// Encrypts a canonical JSON payload into an OVault envelope. A fresh
@@ -349,10 +414,24 @@ class VaultCrypto {
   // --- Raw GCM helpers -------------------------------------------------------
 
   /// Returns ciphertext with the 16-byte tag appended.
-  Future<Uint8List> _encryptRaw(List<int> plaintext, Uint8List nonce) async {
-    final box = await _cipher.encrypt(
+  Future<Uint8List> _encryptRaw(List<int> plaintext, Uint8List nonce) =>
+      _encryptRawWith(_masterKey, plaintext, nonce);
+
+  /// Expects ciphertext with the 16-byte tag appended.
+  Future<Uint8List> _decryptRaw(Uint8List ct, Uint8List nonce) =>
+      _decryptRawWith(_masterKey, ct, nonce);
+
+  /// Static variant of [_encryptRaw]: the cipher is created locally so the
+  /// helper is safe to call inside a background isolate (no instance state,
+  /// no shared `AesGcm`).
+  static Future<Uint8List> _encryptRawWith(
+    Uint8List masterKey,
+    List<int> plaintext,
+    Uint8List nonce,
+  ) async {
+    final box = await AesGcm.with256bits().encrypt(
       plaintext,
-      secretKey: SecretKey(_masterKey),
+      secretKey: SecretKey(masterKey),
       nonce: nonce,
     );
     final out = Uint8List(box.cipherText.length + tagLength);
@@ -361,19 +440,24 @@ class VaultCrypto {
     return out;
   }
 
-  /// Expects ciphertext with the 16-byte tag appended.
-  Future<Uint8List> _decryptRaw(Uint8List ct, Uint8List nonce) async {
+  /// Static variant of [_decryptRaw]; see [_encryptRawWith] for why the
+  /// cipher is created locally.
+  static Future<Uint8List> _decryptRawWith(
+    Uint8List masterKey,
+    Uint8List ct,
+    Uint8List nonce,
+  ) async {
     if (ct.length < tagLength) {
       throw const FormatException('ciphertext shorter than the GCM tag');
     }
     try {
-      final plaintext = await _cipher.decrypt(
+      final plaintext = await AesGcm.with256bits().decrypt(
         SecretBox(
           ct.sublist(0, ct.length - tagLength),
           nonce: nonce,
           mac: Mac(ct.sublist(ct.length - tagLength)),
         ),
-        secretKey: SecretKey(_masterKey),
+        secretKey: SecretKey(masterKey),
       );
       return Uint8List.fromList(plaintext);
     } on SecretBoxAuthenticationError {

@@ -26,14 +26,24 @@ class PinRepository {
   }
 
   /// Sets (or replaces) the PIN. Throws [ArgumentError] on an invalid PIN.
-  Future<void> setPin(String pin) => _store.write(hashKey, PinHasher.hash(pin));
+  ///
+  /// Uses [PinHasher.hashAsync] so the scrypt derivation never blocks the
+  /// UI isolate (the lock pad must stay responsive while the hash is made).
+  Future<void> setPin(String pin) async {
+    final hashed = await PinHasher.hashAsync(pin);
+    return _store.write(hashKey, hashed);
+  }
 
   /// Returns true when [pin] matches the stored hash. False when no PIN is
   /// set or the stored value is malformed.
+  ///
+  /// Uses [PinHasher.verifyAsync] for the same isolate-offload reason as
+  /// [setPin] — a synchronous scrypt here is exactly what froze the PIN pad
+  /// on submit.
   Future<bool> verify(String pin) async {
     final stored = await _store.read(hashKey);
     if (stored == null) return false;
-    return PinHasher.verify(pin, stored);
+    return PinHasher.verifyAsync(pin, stored);
   }
 
   /// Removes the PIN entirely (disable flow).

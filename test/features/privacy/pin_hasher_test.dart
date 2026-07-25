@@ -103,4 +103,34 @@ void main() {
       );
     });
   });
+
+  group('PinHasher async variants (isolate-offloaded scrypt)', () {
+    test('hashAsync + verifyAsync round-trip, wrong PIN rejected', () async {
+      final stored = await PinHasher.hashAsync('4471', salt: fixedSalt);
+      expect(await PinHasher.verifyAsync('4471', stored), isTrue);
+      expect(await PinHasher.verifyAsync('4472', stored), isFalse);
+    });
+
+    test('async and sync variants agree byte-for-byte', () async {
+      final asyncStored = await PinHasher.hashAsync(
+        '880123',
+        salt: fixedSalt,
+        kdfN: 256,
+      );
+      final syncStored = PinHasher.hash('880123', salt: fixedSalt, kdfN: 256);
+      expect(asyncStored, syncStored);
+      // Cross-variant compatibility: either side verifies the other's hash.
+      expect(await PinHasher.verifyAsync('880123', syncStored), isTrue);
+      expect(PinHasher.verify('880123', asyncStored), isTrue);
+    });
+
+    test(
+      'hashAsync rejects invalid PINs; verifyAsync survives garbage',
+      () async {
+        await expectLater(PinHasher.hashAsync('123'), throwsArgumentError);
+        expect(await PinHasher.verifyAsync('4471', 'garbage'), isFalse);
+        expect(await PinHasher.verifyAsync('4471', ''), isFalse);
+      },
+    );
+  });
 }

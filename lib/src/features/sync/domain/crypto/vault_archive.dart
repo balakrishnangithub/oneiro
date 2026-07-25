@@ -1,9 +1,11 @@
 import 'dart:convert';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 
 import '../synced_entry.dart';
+import 'vault_crypto.dart';
 
 /// The OVault v2 archive: every journal entry (tombstones included) as one
 /// gzip-compressed JSON document.
@@ -71,5 +73,51 @@ class VaultArchive {
         else
           throw const FormatException('archive entry is not a JSON object'),
     ];
+  }
+
+  /// Decrypts and decodes an archive envelope on a background isolate.
+  ///
+  /// AES-GCM + gzip + JSON parsing of a few hundred entries took long enough
+  /// on the UI isolate to freeze the app during auto-sync; the whole chain
+  /// runs inside [Isolate.run] here. [SyncedEntry] objects are NOT sendable
+  /// across isolates, so the isolate converts entries back to plain JSON
+  /// maps ([SyncedEntry.toJson]) — maps of primitives cross the boundary
+  /// cheaply.
+  ///
+  /// Exceptions ([FormatException], [VaultAuthenticationException]) re-throw
+  /// on the caller side, preserving [decode] semantics.
+  static Future<List<Map<String, Object?>>> decryptArchiveOffIsolate(
+    Uint8List masterKey,
+    Uint8List envelopeBytes,
+  ) {
+    return Isolate.run(() async {
+      final plaintext = await VaultCrypto.decryptEnvelopeRaw(
+        masterKey,
+        envelopeBytes,
+      );
+      final entries = VaultArchive.decode(plaintext);
+      return [for (final entry in entries) entry.toJson()];
+    });
+  }
+
+  /// Encodes and encrypts an archive on a background isolate, returning the
+  /// sealed envelope bytes.
+  ///
+  /// Mirror of [decryptArchiveOffIsolate] for the upload path: [entriesJson]
+  /// (plain maps, sendable) is parsed back into [SyncedEntry]s inside the
+  /// isolate, encoded and sealed with the caller-provided [nonce] (GCM nonce
+  /// generation stays on the caller side, see [VaultCrypto.randomNonce]).
+  static Future<Uint8List> encryptArchiveOffIsolate(
+    Uint8List masterKey,
+    List<Map<String, Object?>> entriesJson,
+    Uint8List nonce,
+  ) {
+    return Isolate.run(() async {
+      final entries = [
+        for (final json in entriesJson) SyncedEntry.fromJson(json),
+      ];
+      final plaintext = VaultArchive.encode(entries);
+      return VaultCrypto.encryptEnvelopeRaw(masterKey, plaintext, nonce);
+    });
   }
 }

@@ -49,6 +49,19 @@ void main() {
   Future<void> drainSnackbars(WidgetTester tester) =>
       tester.pump(const Duration(seconds: 5));
 
+  /// PIN hashing/verifying now runs off the UI isolate (real async work the
+  /// FakeAsync zone cannot advance). Alternate real event-loop windows with
+  /// fake-zone pumps until [appear] shows, then settle.
+  Future<void> pumpUntilAppears(WidgetTester tester, Finder appear) async {
+    for (var i = 0; i < 40 && !tester.any(appear); i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 100)),
+      );
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('enable flow: enter → confirm stores only a salted hash', (
     tester,
   ) async {
@@ -78,7 +91,7 @@ void main() {
     await tester.enterText(find.byType(TextField), '4471');
     await tester.pump();
     await tester.tap(find.text('Continue'));
-    await tester.pumpAndSettle();
+    await pumpUntilAppears(tester, find.text('PIN lock enabled'));
 
     expect(find.text('PIN lock enabled'), findsOneWidget);
     expect(find.text('Oneiro asks for your PIN on open'), findsOneWidget);
@@ -88,8 +101,8 @@ void main() {
     final stored = secureStore.values[PinRepository.hashKey];
     expect(stored, isNotNull);
     expect(stored, isNot(contains('4471')));
-    expect(await pinRepository.verify('4471'), isTrue);
-    expect(await pinRepository.verify('4472'), isFalse);
+    expect(await tester.runAsync(() => pinRepository.verify('4471')), isTrue);
+    expect(await tester.runAsync(() => pinRepository.verify('4472')), isFalse);
 
     await drainSnackbars(tester);
     await unmountApp(tester);
@@ -119,7 +132,7 @@ void main() {
   });
 
   testWidgets('disable requires the current PIN', (tester) async {
-    await pinRepository.setPin('4471');
+    await tester.runAsync(() => pinRepository.setPin('4471'));
     await pumpSection(tester);
     expect(find.text('Oneiro asks for your PIN on open'), findsOneWidget);
 
@@ -130,7 +143,10 @@ void main() {
     await tester.enterText(find.byType(TextField), '0000');
     await tester.pump();
     await tester.tap(find.text('Continue'));
-    await tester.pumpAndSettle();
+    await pumpUntilAppears(
+      tester,
+      find.text('Incorrect PIN — PIN lock stays on'),
+    );
     expect(find.text('Incorrect PIN — PIN lock stays on'), findsOneWidget);
     expect(await pinRepository.isEnabled(), isTrue);
     await drainSnackbars(tester);
@@ -141,7 +157,7 @@ void main() {
     await tester.enterText(find.byType(TextField), '4471');
     await tester.pump();
     await tester.tap(find.text('Continue'));
-    await tester.pumpAndSettle();
+    await pumpUntilAppears(tester, find.text('PIN lock disabled'));
     expect(find.text('PIN lock disabled'), findsOneWidget);
     expect(await pinRepository.isEnabled(), isFalse);
     expect(find.text('Journal opens freely'), findsOneWidget);
@@ -153,7 +169,7 @@ void main() {
   testWidgets('change PIN verifies current, then replaces the hash', (
     tester,
   ) async {
-    await pinRepository.setPin('4471');
+    await tester.runAsync(() => pinRepository.setPin('4471'));
     await pumpSection(tester);
 
     await tester.tap(find.text('Change PIN'));
@@ -162,7 +178,7 @@ void main() {
     await tester.enterText(find.byType(TextField), '4471');
     await tester.pump();
     await tester.tap(find.text('Continue'));
-    await tester.pumpAndSettle();
+    await pumpUntilAppears(tester, find.text('Choose a new PIN'));
     // New PIN.
     expect(find.text('Choose a new PIN'), findsOneWidget);
     await tester.enterText(find.byType(TextField), '880123');
@@ -173,11 +189,11 @@ void main() {
     await tester.enterText(find.byType(TextField), '880123');
     await tester.pump();
     await tester.tap(find.text('Continue'));
-    await tester.pumpAndSettle();
+    await pumpUntilAppears(tester, find.text('PIN changed'));
 
     expect(find.text('PIN changed'), findsOneWidget);
-    expect(await pinRepository.verify('880123'), isTrue);
-    expect(await pinRepository.verify('4471'), isFalse);
+    expect(await tester.runAsync(() => pinRepository.verify('880123')), isTrue);
+    expect(await tester.runAsync(() => pinRepository.verify('4471')), isFalse);
 
     await drainSnackbars(tester);
     await unmountApp(tester);

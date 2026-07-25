@@ -48,12 +48,30 @@ void main() {
   }
 
   Future<void> enterPin(WidgetTester tester, String pin) async {
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(AppLockGate)),
+    );
+    final controller = container.read(appLockControllerProvider.notifier);
+    final failuresBefore = controller.consecutiveFailures;
     for (final unit in pin.codeUnits) {
       await tester.tap(find.text(String.fromCharCode(unit)));
       await tester.pump();
     }
-    // Let the async verify + state flip land.
-    await tester.pump();
+    // The verify now runs off the UI isolate — real async work the FakeAsync
+    // zone cannot advance. Alternate real event-loop windows (so the isolate
+    // future completes) with fake-zone pumps (so the UI reacts to it) until
+    // the submission resolves: unlock, recorded failure, or cooldown start.
+    for (var i = 0; i < 40; i++) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 100)),
+      );
+      await tester.pump();
+      final state = container.read(appLockControllerProvider);
+      if (state.status != AppLockStatus.locked ||
+          controller.consecutiveFailures > failuresBefore) {
+        break;
+      }
+    }
   }
 
   testWidgets('no PIN set: the shell is never gated', (tester) async {

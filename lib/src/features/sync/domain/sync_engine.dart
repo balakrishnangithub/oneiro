@@ -206,12 +206,19 @@ class SyncEngine {
     var archivePresent = archiveBytes != null;
     if (archiveBytes != null) {
       try {
-        remoteById = {
-          for (final entry in VaultArchive.decode(
-            await crypto.decryptBytes(archiveBytes),
-          ))
-            entry.id: entry,
-        };
+        // Decrypt + gunzip + JSON-parse on a background isolate: the archive
+        // holds the whole journal and doing this on the UI isolate froze the
+        // app (and the PIN pad) during auto-sync. Entries come back as plain
+        // JSON maps (custom objects don't cross isolates) and are parsed
+        // once, here.
+        final jsonList = await VaultArchive.decryptArchiveOffIsolate(
+          crypto.masterKeyBytes,
+          archiveBytes,
+        );
+        final remoteEntries = [
+          for (final json in jsonList) SyncedEntry.fromJson(json),
+        ];
+        remoteById = {for (final entry in remoteEntries) entry.id: entry};
       } catch (error) {
         // Never overwrite unknown data: move the unreadable archive aside
         // and rebuild from local state below.
@@ -328,8 +335,14 @@ class SyncEngine {
       onProgress?.call(
         const SyncProgress(phase: SyncPhase.uploading, processed: 0, total: 1),
       );
-      final envelope = await crypto.encryptBytes(
-        VaultArchive.encode(winners.values),
+      // Encode + gzip + encrypt on a background isolate (same rationale as
+      // the download path above). The nonce is drawn here so isolate-side
+      // code never has to touch Random.secure.
+      final entriesJson = [for (final entry in winners.values) entry.toJson()];
+      final envelope = await VaultArchive.encryptArchiveOffIsolate(
+        crypto.masterKeyBytes,
+        entriesJson,
+        VaultCrypto.randomNonce(),
       );
       await _store.writeArchiveAtomic(envelope);
       archiveUploaded = true;
