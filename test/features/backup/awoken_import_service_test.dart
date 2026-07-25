@@ -28,6 +28,37 @@ void main() {
 
   tearDown(() async => db.close());
 
+  group('dreamContentSignature', () {
+    // Golden values produced by the ORIGINAL BigInt implementation — the
+    // native-int rewrite must keep dedupe stable across app upgrades, or
+    // every already-imported entry would look new and duplicate on re-import.
+    test('matches the golden values of the original BigInt implementation', () {
+      expect(
+        dreamContentSignature(1778457600000, 'Flying over an ocean of stars'),
+        'e8ec6a7195a31dd6',
+      );
+      expect(
+        dreamContentSignature(
+          1447459200000,
+          '  multi\nline   body\twith whitespace  ',
+        ),
+        'b9f0a29fbd40d43f',
+      );
+      expect(
+        dreamContentSignature(0, 'üñïcødé — emojis 🌙✨'),
+        '6a0e6028daf95ea1',
+      );
+    });
+
+    test('high-bit results render as unsigned 16-digit hex', () {
+      for (final body in ['a', 'b', 'x', 'hello', 'test']) {
+        final signature = dreamContentSignature(1778457600000, body);
+        expect(signature, hasLength(16));
+        expect(signature, matches(RegExp(r'^[0-9a-f]{16}$')));
+      }
+    });
+  });
+
   group('AwokenImportService', () {
     test('imports all entries into an empty journal', () async {
       final outcome = await service.importEntries([

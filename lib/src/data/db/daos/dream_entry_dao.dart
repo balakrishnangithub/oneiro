@@ -58,6 +58,19 @@ class DreamEntryDao extends DatabaseAccessor<OneiroDatabase>
   Future<void> insertEntry(DreamEntriesCompanion entry) =>
       into(dreamEntries).insert(entry);
 
+  /// Inserts all [entries] inside a single transaction.
+  ///
+  /// Used by the Awoken import: hundreds of individually awaited inserts
+  /// each paid a full round-trip + implicit transaction and visibly stalled
+  /// the import. One `batch` inside one `transaction` collapses that to a
+  /// single commit.
+  Future<void> insertAll(List<DreamEntriesCompanion> entries) {
+    if (entries.isEmpty) return Future.value();
+    return transaction(() async {
+      await batch((b) => b.insertAll(dreamEntries, entries));
+    });
+  }
+
   /// Writes only the columns present in [changes] to the entry [id].
   Future<int> updateEntry(String id, DreamEntriesCompanion changes) =>
       (update(dreamEntries)..where((t) => t.id.equals(id))).write(changes);

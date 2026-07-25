@@ -5,6 +5,13 @@ import '../../core/utils/date_x.dart';
 import '../db/daos/dream_entry_dao.dart';
 import '../db/oneiro_database.dart';
 
+/// A not-yet-persisted journal entry for bulk creation.
+///
+/// Used by import flows ([DreamRepository.createEntries]): the caller
+/// supplies only user data; ids and timestamps are filled in by the
+/// repository exactly as [DreamRepository.createEntry] does.
+typedef DreamEntryDraft = ({DateTime dreamDate, String text, bool isLucid});
+
 /// Application-facing contract for dream-entry persistence.
 ///
 /// Presentation code depends only on this interface, so later stages
@@ -21,6 +28,10 @@ abstract class DreamRepository {
     required String text,
     required bool isLucid,
   });
+
+  /// Bulk variant of [createEntry] for import flows: one transaction for the
+  /// whole batch instead of one per entry.
+  Future<void> createEntries(List<DreamEntryDraft> drafts);
   Future<void> updateEntry(DreamEntry entry);
   Future<void> softDelete(String id);
   Future<void> restore(String id);
@@ -65,6 +76,25 @@ class DriftDreamRepository implements DreamRepository {
     );
     await _dao.insertEntry(companion);
     return (await _dao.getById(companion.id.value))!;
+  }
+
+  @override
+  Future<void> createEntries(List<DreamEntryDraft> drafts) async {
+    if (drafts.isEmpty) return;
+    // One timestamp for the whole batch: import writes are one logical
+    // event, and a shared createdAt/updatedAt keeps the merge logic simple.
+    final nowMs = _now().millisecondsSinceEpoch;
+    await _dao.insertAll([
+      for (final draft in drafts)
+        DreamEntriesCompanion(
+          id: Value(_uuid.v4()),
+          dreamDate: Value(draft.dreamDate.dayMillis),
+          body: Value(draft.text),
+          isLucid: Value(draft.isLucid),
+          createdAt: Value(nowMs),
+          updatedAt: Value(nowMs),
+        ),
+    ]);
   }
 
   @override
