@@ -15,10 +15,17 @@
          shows this permission to users; Oneiro uses it only for on-demand
          speech-to-text while the editor's mic is toggled on. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <!-- No Google Auto Backup and no device-to-device transfer: either would
+         park an unencrypted copy of the journal database in the user's
+         Google/Samsung account — a third copy outside the zero-knowledge
+         model (this device, or pCloud's ciphertext vault). The encrypted
+         vault the user configures is the one and only backup channel, and
+         restore always happens explicitly via unlock + sync. -->
     <application
         android:label="Oneiro"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false">
         <activity
             android:name=".MainActivity"
             android:exported="true"

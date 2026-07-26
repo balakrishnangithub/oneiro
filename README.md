@@ -159,6 +159,11 @@ hide-from-recents mode (blank card in the app switcher, screenshots
 blocked) protect the journal from casual onlookers. There are no
 third-party analytics, ads or tracking of any kind.
 
+Android's Auto Backup and device-to-device transfer are disabled
+(`android:allowBackup="false"`): left enabled, the OS would silently park an
+unencrypted copy of the journal database in your Google/Samsung account.
+Backup happens only through the encrypted vault you configure yourself.
+
 ## Contributing
 
 Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Please
