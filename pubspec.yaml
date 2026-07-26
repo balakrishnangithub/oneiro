@@ -1,7 +1,7 @@
 name: oneiro
 description: "Oneiro — an open-source dream journal for lucid dreamers."
 publish_to: 'none'
-version: 1.2.2+6
+version: 1.2.3+7
 
 environment:
   sdk: ^3.8.1
