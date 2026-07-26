@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 
+import '../../../core/utils/dream_signature.dart';
 import '../../../data/db/oneiro_database.dart';
 import '../data/remote_vault_store.dart';
 import 'crypto/vault_archive.dart';
@@ -38,6 +39,13 @@ class SyncReport {
   /// this device since the last sync.
   int deletionsPushed = 0;
 
+  /// Local rows tombstoned by content reconciliation: the same dream
+  /// already lived in the vault under a DIFFERENT id (typically the same
+  /// Awoken file imported on two installs), so the archive's id won and
+  /// this duplicate collapsed. Counted apart from [deletionsPushed] —
+  /// nothing was deleted on purpose.
+  int duplicatesCollapsed = 0;
+
   /// Whether the merged archive was (re)uploaded this run.
   bool archiveUploaded = false;
 
@@ -59,6 +67,7 @@ class SyncReport {
       : 'SyncReport(pushed: $pushed, pulled: $pulled, '
             'deletionsPushed: $deletionsPushed, '
             'deletionsPulled: $deletionsPulled, '
+            'duplicatesCollapsed: $duplicatesCollapsed, '
             'conflicts: $conflictsResolved, skipped: $skipped, '
             'archiveUploaded: $archiveUploaded, '
             'warnings: ${warnings.length})';
@@ -245,6 +254,41 @@ class SyncEngine {
     final localById = {for (final entry in localEntries) entry.id: entry};
     final lastSyncedById = await _db.syncStateDao.getLastSyncedMap();
 
+    // --- 2a. Reconcile duplicate origins ------------------------------------
+    // The same logical dream created independently on two installs (the
+    // classic case: re-importing the same Awoken file after a wipe, or
+    // importing on two devices) gets a different random id on each side.
+    // ids are the merge's identity, so without this pass both copies would
+    // survive and the journal would double. Match LIVE entries by content
+    // signature; the id already in the archive wins, the local duplicate is
+    // tombstoned (uploaded below, so the collapse replicates to every
+    // device the duplicate id ever reached).
+    final dedupedIds = <String>{};
+    if (remoteById.isNotEmpty) {
+      final remoteIdBySignature = <String, String>{
+        for (final entry in remoteById.values)
+          if (entry.deletedAt == null)
+            dreamContentSignature(entry.dreamDate, entry.body): entry.id,
+      };
+      for (final local in localEntries) {
+        if (local.deletedAt != null) continue;
+        final remoteId =
+            remoteIdBySignature[dreamContentSignature(
+              local.dreamDate,
+              local.body,
+            )];
+        if (remoteId == null || remoteId == local.id) continue;
+        await _db.dreamEntryDao.softDelete(
+          local.id,
+          _now().millisecondsSinceEpoch,
+        );
+        dedupedIds.add(local.id);
+        report.duplicatesCollapsed++;
+        final tombstoned = await _db.dreamEntryDao.getById(local.id);
+        if (tombstoned != null) localById[local.id] = tombstoned;
+      }
+    }
+
     final unionIds = <String>{...localById.keys, ...remoteById.keys}.toList()
       ..sort();
 
@@ -274,7 +318,8 @@ class SyncEngine {
         uploadNeeded = true;
         if (localDirty) {
           if (local.deletedAt != null) {
-            report.deletionsPushed++;
+            // Dedupe-collapse tombstones report in duplicatesCollapsed.
+            if (!dedupedIds.contains(id)) report.deletionsPushed++;
           } else {
             report.pushed++;
           }

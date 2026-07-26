@@ -394,12 +394,15 @@ class _SyncSectionState extends ConsumerState<SyncSection> {
           : ', ${report.conflictsResolved} conflicts resolved';
       final deletions = report.deletionsPulled + report.deletionsPushed;
       final deletionsText = deletions == 0 ? '' : ', $deletions deletions';
+      final deduped = report.duplicatesCollapsed == 0
+          ? ''
+          : ', ${report.duplicatesCollapsed} duplicates merged';
       final warnings = report.warnings.isEmpty
           ? ''
           : ', ${report.warnings.length} warnings';
       return 'Last sync: ${time}pushed ${report.pushed}, '
           'pulled ${report.pulled}, skipped ${report.skipped}'
-          '$deletionsText$conflicts$warnings';
+          '$deletionsText$deduped$conflicts$warnings';
     }
     // A background run may have finished while the app was closed; its
     // persisted summary is the freshest thing we know.
@@ -413,8 +416,11 @@ class _SyncSectionState extends ConsumerState<SyncSection> {
       final deletions = summary.deletions == 0
           ? ''
           : ', ${summary.deletions} deletions';
+      final deduped = summary.deduplicated == 0
+          ? ''
+          : ', ${summary.deduplicated} duplicates merged';
       return 'Last sync: $time$where — pushed ${summary.pushed}, '
-          'pulled ${summary.pulled}$deletions$warnings';
+          'pulled ${summary.pulled}$deletions$deduped$warnings';
     }
     if (state.lastSyncAt != null) {
       return 'Last sync: '

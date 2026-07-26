@@ -122,6 +122,7 @@ class SyncRunSummary {
     required this.pushed,
     required this.pulled,
     this.deletions = 0,
+    this.deduplicated = 0,
     required this.conflictsResolved,
     required this.warningCount,
     required this.background,
@@ -133,6 +134,9 @@ class SyncRunSummary {
 
   /// Tombstones replicated in either direction (see [SyncReport]).
   final int deletions;
+
+  /// Duplicate-origin rows collapsed by content reconciliation.
+  final int deduplicated;
   final int conflictsResolved;
   final int warningCount;
 
@@ -145,6 +149,7 @@ class SyncRunSummary {
     'pushed': pushed,
     'pulled': pulled,
     'deletions': deletions,
+    'deduped': deduplicated,
     'conflicts': conflictsResolved,
     'warnings': warningCount,
     'background': background,
@@ -159,6 +164,7 @@ class SyncRunSummary {
       pushed: intField('pushed'),
       pulled: intField('pulled'),
       deletions: intField('deletions'),
+      deduplicated: intField('deduped'),
       conflictsResolved: intField('conflicts'),
       warningCount: intField('warnings'),
       background: json['background'] == true,

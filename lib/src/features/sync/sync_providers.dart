@@ -275,6 +275,7 @@ class SyncController extends Notifier<SyncUiState> {
             pushed: report.pushed,
             pulled: report.pulled,
             deletions: report.deletionsPulled + report.deletionsPushed,
+            deduplicated: report.duplicatesCollapsed,
             conflictsResolved: report.conflictsResolved,
             warningCount: report.warnings.length,
             background: false,

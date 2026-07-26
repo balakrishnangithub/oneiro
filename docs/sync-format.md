@@ -124,7 +124,15 @@ reach the vault.
    warning, and treated as empty; the merge below then rebuilds it from
    local state, and other devices re-merge anything only they had on their
    next sync.
-2. **Merge** — walk the union of local and remote ids:
+2. **Reconcile duplicates** — ids are the merge's identity, but the same
+   dream can originate twice under different ids (the classic case:
+   importing the same Awoken file on two installs). A live local entry
+   whose content signature (calendar day + normalized body, FNV-1a 64) also
+   exists remotely under a different id is tombstoned locally — the
+   archive's id wins, and the collapse uploads with the archive so every
+   device the duplicate id reached heals too (reported as
+   `duplicatesCollapsed`).
+3. **Merge** — walk the union of local and remote ids:
    - remote missing → the local entry joins the upload set;
    - local missing → the remote payload is applied locally (upsert or
      soft-delete), then recorded in sync-state;
@@ -132,12 +140,12 @@ reach the vault.
      is applied locally, a local win joins the upload set. Equal
      `updatedAt` is treated as identical content. When both sides changed
      since `lastSyncedUpdatedAt`, the run counts a resolved conflict.
-3. **Upload** — only when the merged state differs from the remote archive:
+4. **Upload** — only when the merged state differs from the remote archive:
    re-encode the full merged state (winners, tombstones included), gzip,
    encrypt and upload atomically. Pure-pull and no-change runs upload
    nothing. Local winners are recorded in sync-state only after the upload
    succeeds.
-4. **Cleanup** — once a v2 archive exists remotely, the legacy v1
+5. **Cleanup** — once a v2 archive exists remotely, the legacy v1
    `entries/` folder (if any) is removed.
 
 Run counters follow the journal, not the wire: `pushed` / `pulled` /

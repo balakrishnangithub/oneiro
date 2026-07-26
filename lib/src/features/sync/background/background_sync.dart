@@ -87,6 +87,7 @@ Future<bool> runBackgroundSync({
           pushed: report.pushed,
           pulled: report.pulled,
           deletions: report.deletionsPulled + report.deletionsPushed,
+          deduplicated: report.duplicatesCollapsed,
           conflictsResolved: report.conflictsResolved,
           warningCount: report.warnings.length,
           background: true,

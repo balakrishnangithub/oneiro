@@ -302,6 +302,59 @@ void main() {
     );
   });
 
+  test(
+    're-imported dreams under new ids collapse onto the vault ids',
+    () async {
+      // Field scenario: device A imported an Awoken file (random ids) and
+      // pushed it; after a wipe the SAME file was imported again (new random
+      // ids). Without content reconciliation the merge unions both id sets
+      // and the journal doubles (366 + 366 = 732).
+      await deviceA.engine.unlockOrCreateVault(passphrase, kdfN: 256);
+      for (final body in ['dream alpha', 'dream beta', 'dream gamma']) {
+        await deviceA.addEntry(body);
+      }
+      await deviceA.engine.sync();
+
+      // The wiped/reinstalled device: same dreams, fresh random ids.
+      final wiped = _Device(LocalDirectoryVaultStore(vaultDir.path));
+      addTearDown(wiped.dispose);
+      await wiped.engine.unlockOrCreateVault(passphrase, kdfN: 256);
+      for (final body in ['dream alpha', 'dream beta', 'dream gamma']) {
+        await wiped.addEntry(body);
+      }
+
+      final report = await wiped.engine.sync();
+      expect(report.duplicatesCollapsed, 3);
+      expect(report.pulled, 3, reason: 'the vault ids come down…');
+      expect(report.pushed, 0, reason: '…not a second copy going up');
+
+      // The journal shows each dream exactly once…
+      final active = await wiped.repository.getAllActive();
+      expect(active, hasLength(3));
+      expect(active.map((e) => e.body).toSet(), {
+        'dream alpha',
+        'dream beta',
+        'dream gamma',
+      });
+      // …and the duplicate local ids survive only as tombstones.
+      expect(
+        await wiped.db.dreamEntryDao.getAllIncludingDeleted(),
+        hasLength(6),
+      );
+
+      // Steady state: nothing left to collapse or upload.
+      final settled = await wiped.engine.sync();
+      expect(settled.duplicatesCollapsed, 0);
+      expect(settled.skipped, 3);
+      expect(settled.archiveUploaded, isFalse);
+
+      // The original device converges on the same 3 live entries (the
+      // duplicate ids' tombstones replicate there too).
+      await deviceA.engine.sync();
+      expect(await deviceA.repository.getAllActive(), hasLength(3));
+    },
+  );
+
   test('corrupted archive is quarantined, rebuilt locally, then self-heals '
       'through the other device', () async {
     final entries = await seedBothDevices(count: 2);

@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:oneiro/src/core/utils/dream_signature.dart';
 import 'package:oneiro/src/data/db/oneiro_database.dart';
 import 'package:oneiro/src/data/repositories/dream_repository.dart';
 import 'package:oneiro/src/features/backup/domain/awoken_import_parser.dart';
