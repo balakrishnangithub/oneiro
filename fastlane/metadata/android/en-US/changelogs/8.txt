@@ -1,0 +1,5 @@
+- Morning reminder tap now opens an empty dream editor directly.
+- Fixed black screen after finishing a reality check when the notification had cold-started the app.
+- Notification taps that cold-start the app are now delivered reliably.
+- PIN is asked on cold start only — no more re-locking when switching apps; notification screens (reality check, new dream) work without the PIN, which is asked when you head back into your journal.
+- README and store-listing icon now match the launcher icon.
