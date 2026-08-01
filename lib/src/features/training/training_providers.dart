@@ -1,6 +1,6 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/providers.dart';
@@ -81,16 +81,41 @@ final trainingReplanProvider = Provider<void>((ref) {
 
 /// Routes a tapped training notification.
 ///
-/// - reality check → opens the full-screen reality-check dialog,
-/// - dream clue → plays the totem sound and counts it,
-/// - morning reminder → just brings the app up (default tap behaviour).
+/// - reality check → opens the full-screen reality-check ritual,
+/// - morning reminder → opens an empty dream editor so the dream can be
+///   written down while it is still fresh,
+/// - dream clue → plays the totem sound and counts it.
+///
+/// A notification that cold-starts the app is delivered by the gateway
+/// during `main()`, BEFORE `runApp`: the router is not attached to a widget
+/// tree yet and any navigation would be silently dropped (leaving the page
+/// the user asked for never shown — or, on some devices, shown as the only
+/// route and popped into a black screen). Navigation payloads are therefore
+/// deferred to the first frame, when the shell exists.
 Future<void> handleTrainingNotificationTap(
   ProviderContainer container,
   String? payload,
 ) async {
+  final navigates =
+      payload == TrainingPayloads.realityCheck ||
+      payload == TrainingPayloads.morningReminder;
+  if (navigates) {
+    final router = container.read(appRouterProvider);
+    // An unattached router has not parsed its initial location yet, so its
+    // configuration is empty. That is exactly the cold-start state: wait
+    // for the first frame instead of navigating into the void.
+    if (router.routerDelegate.currentConfiguration.isEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(handleTrainingNotificationTap(container, payload));
+      });
+      return;
+    }
+  }
   switch (payload) {
     case TrainingPayloads.realityCheck:
       container.read(appRouterProvider).push(AppRoutes.realityCheck);
+    case TrainingPayloads.morningReminder:
+      container.read(appRouterProvider).push(AppRoutes.newDream);
     case TrainingPayloads.dreamClue:
       final repository = container.read(settingsRepositoryProvider);
       final settings = await repository.load();

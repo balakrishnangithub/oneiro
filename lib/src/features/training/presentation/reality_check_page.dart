@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
+import '../../../routing/app_router.dart';
 import '../training_providers.dart';
 
 /// Full-screen reality-check ritual, opened from a training notification or
@@ -29,7 +31,10 @@ class _RealityCheckPageState extends ConsumerState<RealityCheckPage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Reality check'),
-        automaticallyImplyLeading: !_answered,
+        automaticallyImplyLeading: false,
+        leading: _answered
+            ? null
+            : BackButton(onPressed: () => _finish(context)),
       ),
       body: SafeArea(
         child: Padding(
@@ -110,7 +115,7 @@ class _RealityCheckPageState extends ConsumerState<RealityCheckPage> {
         ),
         const Spacer(),
         FilledButton(
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => _finish(context),
           child: const Padding(
             padding: EdgeInsets.all(12),
             child: Text('Done'),
@@ -119,5 +124,18 @@ class _RealityCheckPageState extends ConsumerState<RealityCheckPage> {
         const SizedBox(height: 24),
       ],
     );
+  }
+
+  /// Leaves the ritual. Pops back to whatever was underneath — and if the
+  /// ritual is the app's last route (belt-and-braces for a cold start from
+  /// the notification where the shell was never built), lands on the journal
+  /// instead of popping into a black screen.
+  void _finish(BuildContext context) {
+    final navigator = Navigator.of(context);
+    if (navigator.canPop()) {
+      navigator.pop();
+      return;
+    }
+    GoRouter.of(context).go(AppRoutes.journal);
   }
 }
