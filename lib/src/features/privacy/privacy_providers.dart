@@ -79,7 +79,7 @@ class AppLockState {
 ///
 /// The [PinLockoutPolicy] is in-memory on purpose (see its doc). Enabling,
 /// changing or disabling the PIN happens in Settings and does not touch this
-/// controller: the lock engages on the next cold start or background return.
+/// controller: the lock engages on the next cold start.
 class AppLockController extends Notifier<AppLockState> {
   late final PinLockoutPolicy _lockout = PinLockoutPolicy(
     clock: ref.read(appLockClockProvider),
@@ -103,9 +103,11 @@ class AppLockController extends Notifier<AppLockState> {
     }
   }
 
-  /// Engages the lock (app start with a PIN, or return from background).
-  /// No-op unless currently unlocked AND a PIN is still set — disabling the
-  /// PIN from Settings must never strand the user on a lock screen.
+  /// Engages the lock mid-session (e.g. a future "lock now" affordance).
+  /// The gate no longer calls this on lifecycle events: locking happens on
+  /// cold start only. No-op unless currently unlocked AND a PIN is still
+  /// set — disabling the PIN from Settings must never strand the user on a
+  /// lock screen.
   Future<void> lock() async {
     if (state.status != AppLockStatus.unlocked) return;
     final repo = ref.read(pinRepositoryProvider);

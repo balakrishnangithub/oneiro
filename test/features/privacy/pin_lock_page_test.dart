@@ -3,7 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:oneiro/src/features/privacy/data/pin_repository.dart';
 import 'package:oneiro/src/features/privacy/domain/pin_hasher.dart';
-import 'package:oneiro/src/features/privacy/presentation/app_lock_gate.dart';
+import 'package:oneiro/src/features/privacy/presentation/pin_lock_page.dart';
 import 'package:oneiro/src/features/privacy/privacy_providers.dart';
 import 'package:oneiro/src/features/sync/sync_providers.dart';
 
@@ -29,9 +29,7 @@ void main() {
       secureCredentialsStoreProvider.overrideWithValue(secureStore),
       appLockClockProvider.overrideWithValue(clock.call),
     ],
-    child: const MaterialApp(
-      home: AppLockGate(child: Scaffold(body: Text('Journal content'))),
-    ),
+    child: const MaterialApp(home: PinLockPage()),
   );
 
   Future<void> seedPin(String pin) async {
@@ -39,7 +37,7 @@ void main() {
   }
 
   /// Roomy surface: the whole PIN pad is on screen and nothing scrolls.
-  Future<void> pumpGate(WidgetTester tester) async {
+  Future<void> pumpPage(WidgetTester tester) async {
     tester.view.physicalSize = const Size(1080, 1920);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -49,7 +47,7 @@ void main() {
 
   Future<void> enterPin(WidgetTester tester, String pin) async {
     final container = ProviderScope.containerOf(
-      tester.element(find.byType(AppLockGate)),
+      tester.element(find.byType(PinLockPage)),
     );
     final controller = container.read(appLockControllerProvider.notifier);
     final failuresBefore = controller.consecutiveFailures;
@@ -74,24 +72,12 @@ void main() {
     }
   }
 
-  testWidgets('no PIN set: the shell is never gated', (tester) async {
-    await pumpGate(tester);
-
-    expect(find.text('Journal content'), findsOneWidget);
-    expect(find.text('Oneiro is locked'), findsNothing);
-
-    await unmountApp(tester);
-  });
-
-  testWidgets('locked state shows the PIN pad over the shell', (tester) async {
+  testWidgets('the pad matches the stored PIN length', (tester) async {
     await seedPin('4471');
-    await pumpGate(tester);
+    await pumpPage(tester);
 
     expect(find.text('Oneiro is locked'), findsOneWidget);
     expect(find.text('Enter your PIN to open your journal'), findsOneWidget);
-    // The shell stays in the tree (navigation state preserved) but is
-    // covered by the opaque lock page.
-    expect(find.text('Journal content'), findsOneWidget);
     // Four dots for a four-digit PIN.
     expect(find.text('4'), findsOneWidget);
     expect(find.text('0'), findsOneWidget);
@@ -99,16 +85,20 @@ void main() {
     await unmountApp(tester);
   });
 
-  testWidgets('the correct PIN unlocks the shell', (tester) async {
+  testWidgets('the correct PIN unlocks the session', (tester) async {
     await seedPin('4471');
-    await pumpGate(tester);
-    expect(find.text('Oneiro is locked'), findsOneWidget);
+    await pumpPage(tester);
 
     await enterPin(tester, '4471');
     await tester.pumpAndSettle();
 
-    expect(find.text('Oneiro is locked'), findsNothing);
-    expect(find.text('Journal content'), findsOneWidget);
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(PinLockPage)),
+    );
+    expect(
+      container.read(appLockControllerProvider).status,
+      AppLockStatus.unlocked,
+    );
 
     await unmountApp(tester);
   });
@@ -116,12 +106,11 @@ void main() {
   testWidgets('a wrong PIN shows an error, clears the dots, and does not '
       'unlock', (tester) async {
     await seedPin('4471');
-    await pumpGate(tester);
+    await pumpPage(tester);
 
     await enterPin(tester, '0000');
     await tester.pumpAndSettle();
 
-    expect(find.text('Oneiro is locked'), findsOneWidget);
     expect(find.text('Incorrect PIN — 4 attempts left'), findsOneWidget);
 
     await unmountApp(tester);
@@ -130,7 +119,7 @@ void main() {
   testWidgets('five wrong PINs start a 30-second cooldown that the injected '
       'clock can end', (tester) async {
     await seedPin('4471');
-    await pumpGate(tester);
+    await pumpPage(tester);
 
     for (var i = 1; i <= 5; i++) {
       await enterPin(tester, '0000');
@@ -166,38 +155,13 @@ void main() {
 
     await enterPin(tester, '4471');
     await tester.pumpAndSettle();
-    expect(find.text('Oneiro is locked'), findsNothing);
-    expect(find.text('Journal content'), findsOneWidget);
-
-    await unmountApp(tester);
-  });
-
-  testWidgets('backgrounding the app re-locks an unlocked session', (
-    tester,
-  ) async {
-    await seedPin('4471');
-    await pumpGate(tester);
-    await enterPin(tester, '4471');
-    await tester.pumpAndSettle();
-    expect(find.text('Oneiro is locked'), findsNothing);
-
-    late ProviderContainer container;
-    final context = tester.element(find.text('Journal content'));
-    container = ProviderScope.containerOf(context);
-
-    // The state flips immediately on pause. (While paused the scheduler
-    // disables frames — exactly like a real device — so the overlay itself
-    // is drawn on the first frame after resume.)
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
-    await tester.pump();
+    final container = ProviderScope.containerOf(
+      tester.element(find.byType(PinLockPage)),
+    );
     expect(
       container.read(appLockControllerProvider).status,
-      AppLockStatus.locked,
+      AppLockStatus.unlocked,
     );
-
-    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
-    await tester.pumpAndSettle();
-    expect(find.text('Oneiro is locked'), findsOneWidget);
 
     await unmountApp(tester);
   });

@@ -8,7 +8,9 @@ import '../../../core/theme/app_theme.dart';
 import '../domain/pin_hasher.dart';
 import '../privacy_providers.dart';
 
-/// Full-screen PIN pad shown by [AppLockGate] whenever the app is locked.
+/// Full-screen PIN pad, served as the /unlock route whenever the session is
+/// locked (the router redirects to it; unlocking bounces back to the
+/// journal via the same redirect).
 ///
 /// Auto-submits once the stored PIN length is reached. A wrong entry shakes
 /// the dots, shows how many attempts remain and clears the input; after
@@ -92,7 +94,8 @@ class _PinLockPageState extends ConsumerState<PinLockPage>
     if (!mounted) return;
     switch (result) {
       case PinSubmitResult.unlocked:
-        // The gate removes this page when the state flips to unlocked.
+        // The router's redirect (refreshListenable) leaves /unlock as soon
+        // as the state flips to unlocked.
         return;
       case PinSubmitResult.wrongPin:
         final left = _controller.remainingAttempts;

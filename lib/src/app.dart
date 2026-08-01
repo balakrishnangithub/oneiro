@@ -27,8 +27,10 @@ class OneiroApp extends ConsumerWidget {
       darkTheme: AppTheme.dark(),
       themeMode: ThemeMode.system,
       routerConfig: router,
-      // Blocks the shell behind the PIN lock screen whenever the app-lock
-      // controller is locked (app start with a PIN, or background return).
+      // Veils the shell behind a blank surface while the credential vault
+      // is read at startup. The PIN lock itself is enforced by the router's
+      // redirect (see appLockRedirect); notification deep links stay usable
+      // while locked.
       builder: (context, child) =>
           AppLockGate(child: child ?? const SizedBox.shrink()),
     );
